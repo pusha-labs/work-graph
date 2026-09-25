@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workgraph
+      POSTGRES_USER: workgraph
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workgraph -d workgraph"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - type: bind
+        source: ${WORK_GRAPH_DATA_DIR:?set WORK_GRAPH_DATA_DIR in .env}/postgres
+        target: /var/lib/postgresql
+        bind:
+          create_host_path: false
+
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://workgraph:${POSTGRES_PASSWORD}@postgres:5432/workgraph?sslmode=disable
+      HTTP_ADDRESS: :8080
+      WORK_GRAPH_MASTER_KEY: ${WORK_GRAPH_MASTER_KEY:?set WORK_GRAPH_MASTER_KEY in .env}
+      WORK_GRAPH_REGISTRATION_MODE: ${WORK_GRAPH_REGISTRATION_MODE:-invite_only}
+      WORK_GRAPH_PUBLIC_URL: ${WORK_GRAPH_PUBLIC_URL:-}
+      WORK_GRAPH_EMAIL_FROM: ${WORK_GRAPH_EMAIL_FROM:-}
+      WORK_GRAPH_SMTP_ADDRESS: ${WORK_GRAPH_SMTP_ADDRESS:-}
+      WORK_GRAPH_SMTP_USERNAME: ${WORK_GRAPH_SMTP_USERNAME:-}
+      WORK_GRAPH_SMTP_PASSWORD: ${WORK_GRAPH_SMTP_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/v1/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: ./apps/web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WORK_GRAPH_PORT:-8088}:80"
+    depends_on:
+      api:
+        condition: service_healthy

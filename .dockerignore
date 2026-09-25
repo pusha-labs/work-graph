@@ -1,0 +1,5 @@
+.git
+.github
+apps/web/node_modules
+apps/web/dist
+work/

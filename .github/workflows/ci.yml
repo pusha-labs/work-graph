@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build and verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Validate operational scripts
+        run: bash -n scripts/*.sh
+
+      - name: Test backend
+        run: docker build --target test --tag work-graph-api-test .
+
+      - name: Build web application
+        run: docker build --tag work-graph-web-test ./apps/web
+
+      - name: Verify backup and restore
+        run: ./scripts/test-backup-restore.sh
+
+      - name: Verify demo deployment
+        run: ./scripts/test-demo.sh
+
+      - name: Verify Integration Gateway
+        run: ./scripts/test-gateway.sh

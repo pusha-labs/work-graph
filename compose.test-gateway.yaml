@@ -1,0 +1,3 @@
+services:
+  gateway:
+    image: work-graph-gateway-test:local

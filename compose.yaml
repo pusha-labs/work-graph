@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: workgraph
+      POSTGRES_USER: workgraph
+      POSTGRES_PASSWORD: workgraph
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workgraph -d workgraph"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://workgraph:workgraph@postgres:5432/workgraph?sslmode=disable
+      HTTP_ADDRESS: :8080
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      WORK_GRAPH_MASTER_KEY: ${WORK_GRAPH_MASTER_KEY:-}
+      WORK_GRAPH_REGISTRATION_MODE: ${WORK_GRAPH_REGISTRATION_MODE:-invite_only}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/v1/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  runner:
+    profiles: ["automation"]
+    build: .
+    entrypoint: ["work-graph-runner"]
+    environment:
+      API_URL: http://api:8080
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      HTTP_RUNNER_ALLOWED_HOSTS: ${HTTP_RUNNER_ALLOWED_HOSTS:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build: ./apps/web
+    ports:
+      - "${WORK_GRAPH_PORT:-8088}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  gateway-postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: gateway
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - gateway-postgres-data:/var/lib/postgresql
+
+  gateway:
+    build: .
+    entrypoint: ["work-graph-gateway"]
+    environment:
+      GATEWAY_DATABASE_URL: postgres://gateway:gateway@gateway-postgres:5432/gateway?sslmode=disable
+      GATEWAY_HTTP_ADDRESS: :8090
+      GATEWAY_ADMIN_TOKEN: ${GATEWAY_ADMIN_TOKEN:-}
+      GATEWAY_MASTER_KEY: ${GATEWAY_MASTER_KEY:-}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:8090}
+      GATEWAY_INSTALLATION_KEY: ${GATEWAY_INSTALLATION_KEY:-mock-local}
+      WORK_GRAPH_URL: http://web
+      WORK_GRAPH_PUBLIC_URL: ${WORK_GRAPH_PUBLIC_URL:-http://localhost:8088}
+      WORK_GRAPH_WORKSPACE_ID: ${WORK_GRAPH_WORKSPACE_ID:-}
+      WORK_GRAPH_SERVICE_TOKEN: ${WORK_GRAPH_SERVICE_TOKEN:-}
+    ports:
+      - "${WORK_GRAPH_GATEWAY_PORT:-8090}:8090"
+    depends_on:
+      gateway-postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+
+volumes:
+  postgres-data:
+  gateway-postgres-data:

@@ -68,7 +68,7 @@ type BidRiskAssessment={adjustedDurationMinutes:number;expectedDurationMinutes:n
 type StepBid={id:string;workflowStepId:string;actor:ActorSummary;promisedDurationMinutes:number;status:'active'|'withdrawn'|'won'|'lost';submittedAt:string;updatedAt:string;withdrawnAt:string|null;estimation:EstimationStats;riskAssessment?:BidRiskAssessment};
 type ExchangeOffer={nodeId:string;nodeTitle:string;rootId:string;rootTitle:string;stepId:string;stepName:string;stepPosition:number;requester:string;requirements:string[];knowledgeRequirements:string[];activeBidCount:number;myBid:StepBid|null};
 type PersonalRank = { rank: number; stepStatus: MyWorkItem['stepStatus']; stepName: string };
-type Diagnostic = { id:string; kind:'missing_requester'|'missing_outcome'|'wide_branch'|'no_eligible_performer'|'open_descendants'|'uncovered_knowledge'|'concentrated_knowledge'; severity:'warning'|'error'; title:string; explanation:string; nodeId:string; nodeTitle:string; subjectId:string; subjectName:string; evidence:string[]; relatedNodeIds:string[] };
+type Diagnostic = { id:string; kind:'missing_requester'|'missing_outcome'|'wide_branch'|'agreed_duration_elapsed'|'requester_review_waiting'|'no_eligible_performer'|'open_descendants'|'uncovered_knowledge'|'concentrated_knowledge'; severity:'warning'|'error'; title:string; explanation:string; nodeId:string; nodeTitle:string; subjectId:string; subjectName:string; evidence:string[]; relatedNodeIds:string[] };
 type OnboardingStep={id:string;title:string;description:string;complete:boolean;action?:string;onAction?:()=>void};
 
 function orderPersonalWork(items:MyWorkItem[],rootScores:Record<string,number>,criticalNodeIds:Set<string>){

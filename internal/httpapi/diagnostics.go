@@ -115,6 +115,83 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 	wideRows.Close()
 
+	overdueRows, err := s.db.Query(r.Context(), `
+		SELECT e.id,n.id,n.title,s.name,COALESCE(a.display_name,'Unknown performer'),e.promised_duration_minutes,
+		       floor(EXTRACT(EPOCH FROM (now()-e.started_at))/60)::integer
+		FROM workflow_step_executions e
+		JOIN workflow_steps s ON s.id=e.workflow_step_id
+		JOIN work_nodes n ON n.id=s.work_node_id
+		LEFT JOIN actors a ON a.id=e.started_by
+		WHERE n.workspace_id=$1 AND n.removed_revision IS NULL AND n.lifecycle_status<>'closed'
+		  AND s.step_type='human' AND s.step_status='active' AND e.execution_status='running'
+		  AND e.promised_duration_minutes IS NOT NULL
+		  AND now()>e.started_at+make_interval(mins=>e.promised_duration_minutes)
+		ORDER BY e.started_at`, workspaceID)
+	if err != nil {
+		s.internalError(w, "find overdue agreed work", err)
+		return
+	}
+	for overdueRows.Next() {
+		var executionID, nodeID, nodeTitle, stepName, performer string
+		var agreedMinutes, elapsedMinutes int
+		if err := overdueRows.Scan(&executionID, &nodeID, &nodeTitle, &stepName, &performer, &agreedMinutes, &elapsedMinutes); err != nil {
+			overdueRows.Close()
+			s.internalError(w, "read overdue work diagnostic", err)
+			return
+		}
+		items = append(items, diagnostic{
+			ID: "agreed-duration-elapsed:" + executionID, Kind: "agreed_duration_elapsed", Severity: "warning",
+			Title: "Agreed duration has elapsed", Explanation: "This step is still active beyond its agreed duration. The signal describes schedule risk and does not judge the performer.",
+			NodeID: nodeID, NodeTitle: nodeTitle,
+			Evidence: []string{fmt.Sprintf("Active step: %s", stepName), fmt.Sprintf("Performer: %s", performer), fmt.Sprintf("Agreed: %s · elapsed: %s", formatDiagnosticDuration(agreedMinutes), formatDiagnosticDuration(elapsedMinutes))}, RelatedNodeIDs: []string{},
+		})
+	}
+	if err := overdueRows.Err(); err != nil {
+		overdueRows.Close()
+		s.internalError(w, "read overdue work diagnostics", err)
+		return
+	}
+	overdueRows.Close()
+
+	reviewRows, err := s.db.Query(r.Context(), `
+		SELECT n.id,n.title,floor(EXTRACT(EPOCH FROM (now()-n.updated_at))/86400)::integer
+		FROM work_nodes n
+		WHERE n.workspace_id=$1 AND n.removed_revision IS NULL AND n.lifecycle_status='review'
+		  AND n.updated_at<now()-interval '7 days'
+		  AND NOT EXISTS (
+			WITH RECURSIVE descendants AS (
+				SELECT child.id,child.lifecycle_status FROM work_nodes child WHERE child.parent_id=n.id AND child.removed_revision IS NULL
+				UNION ALL
+				SELECT child.id,child.lifecycle_status FROM work_nodes child JOIN descendants d ON child.parent_id=d.id WHERE child.removed_revision IS NULL
+			)
+			SELECT 1 FROM descendants WHERE lifecycle_status<>'closed'
+		  )
+		ORDER BY n.updated_at`, workspaceID)
+	if err != nil {
+		s.internalError(w, "find delayed requester reviews", err)
+		return
+	}
+	for reviewRows.Next() {
+		var nodeID, nodeTitle string
+		var waitingDays int
+		if err := reviewRows.Scan(&nodeID, &nodeTitle, &waitingDays); err != nil {
+			reviewRows.Close()
+			s.internalError(w, "read requester review diagnostic", err)
+			return
+		}
+		items = append(items, diagnostic{
+			ID: "requester-review-waiting:" + nodeID, Kind: "requester_review_waiting", Severity: "warning",
+			Title: "Requester review is waiting", Explanation: "All task-circle work is complete, but final acceptance has been waiting for at least seven days.",
+			NodeID: nodeID, NodeTitle: nodeTitle, Evidence: []string{fmt.Sprintf("Waiting for final acceptance for %d days.", waitingDays)}, RelatedNodeIDs: []string{},
+		})
+	}
+	if err := reviewRows.Err(); err != nil {
+		reviewRows.Close()
+		s.internalError(w, "read requester review diagnostics", err)
+		return
+	}
+	reviewRows.Close()
+
 	matchRows, err := s.db.Query(r.Context(), `
 		WITH current_steps AS (
 			SELECT DISTINCT ON (s.work_node_id) s.id,s.work_node_id,s.name,s.step_type,s.step_status
@@ -271,6 +348,16 @@ func joinDiagnosticNames(values []string) string {
 		return joinWithComma(values)
 	}
 	return fmt.Sprintf("%s, and %d more", joinWithComma(values[:visibleLimit]), len(values)-visibleLimit)
+}
+
+func formatDiagnosticDuration(minutes int) string {
+	if minutes < 60 {
+		return fmt.Sprintf("%d min", minutes)
+	}
+	if minutes < 1440 {
+		return fmt.Sprintf("%dh %02dm", minutes/60, minutes%60)
+	}
+	return fmt.Sprintf("%dd %dh", minutes/1440, (minutes%1440)/60)
 }
 
 func joinWithComma(values []string) string {

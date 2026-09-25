@@ -11,6 +11,15 @@ func TestJoinDiagnosticNames(t *testing.T) {
 	}
 }
 
+func TestFormatDiagnosticDuration(t *testing.T) {
+	tests := map[int]string{45: "45 min", 125: "2h 05m", 3060: "2d 3h"}
+	for minutes, want := range tests {
+		if got := formatDiagnosticDuration(minutes); got != want {
+			t.Fatalf("formatDiagnosticDuration(%d) = %q, want %q", minutes, got, want)
+		}
+	}
+}
+
 func TestClassifyKnowledgeRisk(t *testing.T) {
 	tests := []struct {
 		holders  int

@@ -134,6 +134,7 @@ add_requirement "$(jq -r '.id' <<<"$inspection")" "$(jq -r '.id' <<<"$permit_spe
 add_knowledge "$(jq -r '.id' <<<"$inspection")" "$(jq -r '.id' <<<"$permit_subject")"
 
 api_post "/api/v1/workspaces/$workspace_id/nodes/$(jq -r '.id' <<<"$foundation")/workflow-steps" "$(jq -cn --arg name 'Engineering review' --arg capabilityId "$(jq -r '.id' <<<"$engineer")" --arg subjectId "$(jq -r '.id' <<<"$house_subject")" '{name:$name,capabilityId:$capabilityId,subjectId:$subjectId}')" >/dev/null
+api_post "/api/v1/workspaces/$workspace_id/nodes/$(jq -r '.id' <<<"$inspection")/workflow-steps" "$(jq -cn --arg name 'Permit compliance review' --arg capabilityId "$(jq -r '.id' <<<"$permit_specialist")" --arg subjectId "$(jq -r '.id' <<<"$permit_subject")" '{name:$name,capabilityId:$capabilityId,subjectId:$subjectId}')" >/dev/null
 
 if critical_until="$(date -u -v+7d '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null)"; then :; else critical_until="$(date -u -d '+7 days' '+%Y-%m-%dT%H:%M:%SZ')"; fi
 api_post "/api/v1/workspaces/$workspace_id/nodes/$(jq -r '.id' <<<"$utilities")/criticality" "$(jq -cn --arg reason 'Utility inspection slot is available only this week' --arg criticalUntil "$critical_until" '{reason:$reason,criticalUntil:$criticalUntil}')" >/dev/null

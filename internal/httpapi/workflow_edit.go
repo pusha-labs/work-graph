@@ -234,15 +234,6 @@ func (s *server) deleteWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "workflow can only be edited before work starts")
 		return
 	}
-	var count int
-	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM workflow_steps WHERE work_node_id=$1`, nodeID).Scan(&count); err != nil {
-		s.writeDatabaseError(w, "find workflow step", err)
-		return
-	}
-	if count <= 1 {
-		writeError(w, http.StatusConflict, "a task must keep at least one workflow step")
-		return
-	}
 	var position int
 	var stepName string
 	if err = tx.QueryRow(r.Context(), `SELECT position,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2`, stepID, nodeID).Scan(&position, &stepName); err != nil {

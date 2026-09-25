@@ -246,10 +246,6 @@ func (s *server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "add root requester", err)
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO workflow_steps(work_node_id,position,name,step_status) VALUES ($1,1,'Perform work','ready')`, node.ID); err != nil {
-		s.internalError(w, "create initial workflow step", err)
-		return
-	}
 	if err := recordNodeChange(r.Context(), tx, node, "node.created", 1, nil, requesterID); err != nil {
 		s.internalError(w, "record root goal", err)
 		return
@@ -445,10 +441,6 @@ func (s *server) createNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := tx.Exec(r.Context(), `INSERT INTO work_node_participants(work_node_id, actor_id, participant_role, sequence_number) VALUES ($1, $2, 'requester', 0)`, node.ID, requesterID); err != nil {
 		s.internalError(w, "add node requester", err)
-		return
-	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO workflow_steps(work_node_id,position,name,step_status) VALUES ($1,1,'Perform work','ready')`, node.ID); err != nil {
-		s.internalError(w, "create initial workflow step", err)
 		return
 	}
 	if err := recordNodeChange(r.Context(), tx, node, "node.created", revision, nil, requesterID); err != nil {

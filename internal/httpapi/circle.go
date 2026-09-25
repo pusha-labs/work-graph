@@ -503,7 +503,7 @@ func (s *server) addWorkflowStep(w http.ResponseWriter, r *http.Request) {
 	if input.ModuleID != "" {
 		moduleID, moduleVersion = input.ModuleID, input.ModuleVersion
 	}
-	err = tx.QueryRow(r.Context(), `INSERT INTO workflow_steps(work_node_id,position,name,step_type,step_status,module_id,module_version,configuration,distribution_mode) SELECT $1,COALESCE(MAX(position),0)+1,$2,$3,'pending',$4,$5,$6,$7 FROM workflow_steps WHERE work_node_id=$1 RETURNING id,position,name,step_type,step_status,module_id,module_version,configuration,distribution_mode`, nodeID, input.Name, input.StepType, moduleID, moduleVersion, input.Configuration, input.DistributionMode).Scan(&step.ID, &step.Position, &step.Name, &step.StepType, &step.StepStatus, &step.ModuleID, &step.ModuleVersion, &step.Configuration, &step.DistributionMode)
+	err = tx.QueryRow(r.Context(), `INSERT INTO workflow_steps(work_node_id,position,name,step_type,step_status,module_id,module_version,configuration,distribution_mode) SELECT $1,COALESCE(MAX(position),0)+1,$2,$3,CASE WHEN COUNT(*)=0 THEN 'ready' ELSE 'pending' END,$4,$5,$6,$7 FROM workflow_steps WHERE work_node_id=$1 RETURNING id,position,name,step_type,step_status,module_id,module_version,configuration,distribution_mode`, nodeID, input.Name, input.StepType, moduleID, moduleVersion, input.Configuration, input.DistributionMode).Scan(&step.ID, &step.Position, &step.Name, &step.StepType, &step.StepStatus, &step.ModuleID, &step.ModuleVersion, &step.Configuration, &step.DistributionMode)
 	if err != nil {
 		s.internalError(w, "create workflow step", err)
 		return

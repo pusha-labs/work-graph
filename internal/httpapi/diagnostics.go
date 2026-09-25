@@ -52,6 +52,69 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 	}
 	requesterRows.Close()
 
+	outcomeRows, err := s.db.Query(r.Context(), `
+		SELECT id,title FROM work_nodes
+		WHERE workspace_id=$1 AND parent_id IS NULL AND removed_revision IS NULL AND lifecycle_status<>'closed'
+		  AND btrim(desired_outcome)=''
+		ORDER BY created_at`, workspaceID)
+	if err != nil {
+		s.internalError(w, "find goals without outcomes", err)
+		return
+	}
+	for outcomeRows.Next() {
+		var nodeID, nodeTitle string
+		if err := outcomeRows.Scan(&nodeID, &nodeTitle); err != nil {
+			outcomeRows.Close()
+			s.internalError(w, "read outcome diagnostic", err)
+			return
+		}
+		items = append(items, diagnostic{
+			ID: "missing-outcome:" + nodeID, Kind: "missing_outcome", Severity: "warning",
+			Title: "Goal outcome is not described", Explanation: "This root goal names the work, but does not yet explain what successful completion should produce.",
+			NodeID: nodeID, NodeTitle: nodeTitle, Evidence: []string{"Desired outcome is empty on this root goal."}, RelatedNodeIDs: []string{},
+		})
+	}
+	if err := outcomeRows.Err(); err != nil {
+		outcomeRows.Close()
+		s.internalError(w, "read outcome diagnostics", err)
+		return
+	}
+	outcomeRows.Close()
+
+	wideRows, err := s.db.Query(r.Context(), `
+		SELECT parent.id,parent.title,count(child.id),array_agg(child.id::text ORDER BY child.created_at),array_agg(child.title ORDER BY child.created_at)
+		FROM work_nodes parent JOIN work_nodes child ON child.parent_id=parent.id
+		WHERE parent.workspace_id=$1 AND parent.removed_revision IS NULL AND parent.lifecycle_status<>'closed'
+		  AND child.removed_revision IS NULL AND child.lifecycle_status<>'closed'
+		GROUP BY parent.id,parent.title,parent.created_at HAVING count(child.id)>=8
+		ORDER BY parent.created_at`, workspaceID)
+	if err != nil {
+		s.internalError(w, "find wide branches", err)
+		return
+	}
+	for wideRows.Next() {
+		var nodeID, nodeTitle string
+		var childCount int
+		var relatedIDs, titles []string
+		if err := wideRows.Scan(&nodeID, &nodeTitle, &childCount, &relatedIDs, &titles); err != nil {
+			wideRows.Close()
+			s.internalError(w, "read wide branch diagnostic", err)
+			return
+		}
+		items = append(items, diagnostic{
+			ID: "wide-branch:" + nodeID, Kind: "wide_branch", Severity: "warning",
+			Title: "Branch is becoming hard to scan", Explanation: "Many open tasks sit directly under this node. Grouping related work into meaningful phases may make the execution path easier to understand.",
+			NodeID: nodeID, NodeTitle: nodeTitle,
+			Evidence: []string{fmt.Sprintf("%d direct open child tasks: %s", childCount, joinDiagnosticNames(titles))}, RelatedNodeIDs: relatedIDs,
+		})
+	}
+	if err := wideRows.Err(); err != nil {
+		wideRows.Close()
+		s.internalError(w, "read wide branch diagnostics", err)
+		return
+	}
+	wideRows.Close()
+
 	matchRows, err := s.db.Query(r.Context(), `
 		WITH current_steps AS (
 			SELECT DISTINCT ON (s.work_node_id) s.id,s.work_node_id,s.name,s.step_type,s.step_status

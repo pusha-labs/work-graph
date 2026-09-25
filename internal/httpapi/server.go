@@ -115,6 +115,8 @@ func New(logger *slog.Logger, db *pgxpool.Pool) http.Handler {
 	protected.HandleFunc("DELETE /api/v1/workspaces/{workspaceID}/criticality/{signalID}", s.authorizeWorkspace(s.revokeCriticalitySignal))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/activity", s.authorizeWorkspace(s.listActivity))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/diagnostics", s.authorizeWorkspace(s.listDiagnostics))
+	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/diagnostic-settings", s.authorizeWorkspace(s.getDiagnosticSettings))
+	protected.HandleFunc("PATCH /api/v1/workspaces/{workspaceID}/diagnostic-settings", s.authorizeWorkspaceAdmin(s.updateDiagnosticSettings))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/service-accounts", s.authorizeWorkspaceAdmin(s.listServiceAccounts))
 	protected.HandleFunc("POST /api/v1/workspaces/{workspaceID}/service-accounts", s.authorizeWorkspaceAdmin(s.createServiceAccount))
 	protected.HandleFunc("POST /api/v1/workspaces/{workspaceID}/service-accounts/{serviceAccountID}/rotate", s.authorizeWorkspaceAdmin(s.rotateServiceAccountToken))

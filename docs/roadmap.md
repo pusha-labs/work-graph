@@ -31,7 +31,7 @@ Before returning to the full priority engine, the project should strengthen the 
 5. Build on manual, requester-controlled HTTP retries and runner-side cancellation with secret references and per-module permission administration. Every retry must preserve the failed attempt and create a new numbered attempt; cancelled attempts must reject late results.
 6. Extend the workspace module policy UI with installation and version upgrades. Enable/disable controls, exact-version publisher trust, exact HTTP host permissions, secret-access review, and referenced-module protection are now present.
 7. Add Bash only after the isolated runner boundary has been implemented and verified.
-8. Continue expanding tree diagnostics. Live checks now cover missing requesters, root goals without a desired outcome, overly wide active branches, elapsed agreed durations, delayed requester acceptance, ready human steps without an eligible performer, requester review blocked by open descendants, uncovered knowledge subjects, and single-person knowledge concentration; configurable thresholds and blocked-work stagnation remain.
+8. Continue expanding tree diagnostics. Live checks now cover missing requesters, root goals without a desired outcome, overly wide active branches, elapsed agreed durations, delayed requester acceptance, prolonged blocked work, ready human steps without an eligible performer, requester review blocked by open descendants, uncovered knowledge subjects, and single-person knowledge concentration. Workspace administrators can tune the wide-branch, requester-review, and blocked-work thresholds without changing task status or priority.
 
 The exchange model and its implementation order are defined in [Human-Step Exchange](task-exchange.md).
 

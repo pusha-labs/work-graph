@@ -21,6 +21,11 @@ type diagnostic struct {
 
 func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 	workspaceID := r.PathValue("workspaceID")
+	settings, err := s.diagnosticSettingsForWorkspace(r)
+	if err != nil {
+		s.internalError(w, "get diagnostic settings", err)
+		return
+	}
 	items := []diagnostic{}
 
 	requesterRows, err := s.db.Query(r.Context(), `
@@ -86,8 +91,8 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 		FROM work_nodes parent JOIN work_nodes child ON child.parent_id=parent.id
 		WHERE parent.workspace_id=$1 AND parent.removed_revision IS NULL AND parent.lifecycle_status<>'closed'
 		  AND child.removed_revision IS NULL AND child.lifecycle_status<>'closed'
-		GROUP BY parent.id,parent.title,parent.created_at HAVING count(child.id)>=8
-		ORDER BY parent.created_at`, workspaceID)
+		GROUP BY parent.id,parent.title,parent.created_at HAVING count(child.id)>=$2
+		ORDER BY parent.created_at`, workspaceID, settings.WideBranchChildren)
 	if err != nil {
 		s.internalError(w, "find wide branches", err)
 		return
@@ -157,7 +162,7 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 		SELECT n.id,n.title,floor(EXTRACT(EPOCH FROM (now()-n.updated_at))/86400)::integer
 		FROM work_nodes n
 		WHERE n.workspace_id=$1 AND n.removed_revision IS NULL AND n.lifecycle_status='review'
-		  AND n.updated_at<now()-interval '7 days'
+		  AND n.updated_at<now()-make_interval(days=>$2)
 		  AND NOT EXISTS (
 			WITH RECURSIVE descendants AS (
 				SELECT child.id,child.lifecycle_status FROM work_nodes child WHERE child.parent_id=n.id AND child.removed_revision IS NULL
@@ -166,7 +171,7 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 			)
 			SELECT 1 FROM descendants WHERE lifecycle_status<>'closed'
 		  )
-		ORDER BY n.updated_at`, workspaceID)
+		ORDER BY n.updated_at`, workspaceID, settings.RequesterReviewDays)
 	if err != nil {
 		s.internalError(w, "find delayed requester reviews", err)
 		return
@@ -191,6 +196,43 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reviewRows.Close()
+
+	blockedRows, err := s.db.Query(r.Context(), `
+		SELECT n.id,n.title,floor(EXTRACT(EPOCH FROM (now()-COALESCE(blocked.blocked_at,n.updated_at)))/86400)::integer
+		FROM work_nodes n
+		LEFT JOIN LATERAL (
+			SELECT ce.occurred_at AS blocked_at FROM change_events ce
+			WHERE ce.workspace_id=n.workspace_id AND ce.entity_id=n.id
+			  AND ce.after_state->>'lifecycleStatus'='blocked' AND COALESCE(ce.before_state->>'lifecycleStatus','')<>'blocked'
+			ORDER BY ce.occurred_at DESC LIMIT 1
+		) blocked ON true
+		WHERE n.workspace_id=$1 AND n.removed_revision IS NULL AND n.lifecycle_status='blocked'
+		  AND COALESCE(blocked.blocked_at,n.updated_at)<now()-make_interval(days=>$2)
+		ORDER BY COALESCE(blocked.blocked_at,n.updated_at)`, workspaceID, settings.BlockedWorkDays)
+	if err != nil {
+		s.internalError(w, "find stagnant blocked work", err)
+		return
+	}
+	for blockedRows.Next() {
+		var nodeID, nodeTitle string
+		var blockedDays int
+		if err := blockedRows.Scan(&nodeID, &nodeTitle, &blockedDays); err != nil {
+			blockedRows.Close()
+			s.internalError(w, "read blocked work diagnostic", err)
+			return
+		}
+		items = append(items, diagnostic{
+			ID: "blocked-work-stagnant:" + nodeID, Kind: "blocked_work_stagnant", Severity: "warning",
+			Title: "Blocked work needs attention", Explanation: "This task has remained blocked beyond the workspace threshold. Review the blocker or change the plan explicitly.",
+			NodeID: nodeID, NodeTitle: nodeTitle, Evidence: []string{fmt.Sprintf("Blocked for %d days · workspace threshold: %d days.", blockedDays, settings.BlockedWorkDays)}, RelatedNodeIDs: []string{},
+		})
+	}
+	if err := blockedRows.Err(); err != nil {
+		blockedRows.Close()
+		s.internalError(w, "read blocked work diagnostics", err)
+		return
+	}
+	blockedRows.Close()
 
 	matchRows, err := s.db.Query(r.Context(), `
 		WITH current_steps AS (

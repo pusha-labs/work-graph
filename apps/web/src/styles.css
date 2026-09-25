@@ -475,6 +475,17 @@ textarea { resize: vertical; line-height: 1.5; }
 .history-empty { margin: .75rem; color: #78857e; font-size: .72rem; }
 .history-load-more { display: block; margin: .85rem auto .2rem; padding: .5rem .85rem; color: #35634f; background: #edf3ef; border: 1px solid #d3dfd8; font-size: .68rem; }
 .history-load-more:hover { background: #e2eee7; }
+.diagnostic-settings-view { display: grid; gap: 1.25rem; padding: 1.5rem; }
+.diagnostic-settings-view > header { display: flex; align-items: start; justify-content: space-between; gap: 2rem; }
+.diagnostic-settings-view h2 { margin: 0 0 .35rem; font-family: Georgia,serif; font-size: 1.55rem; font-weight: 500; }
+.diagnostic-settings-view p { max-width: 42rem; margin: 0; color: #68766f; font-size: .75rem; line-height: 1.5; }
+.diagnostic-settings-view > header strong { padding: .35rem .55rem; color: #765d26; background: #fff4d8; border-radius: 2rem; font-size: .65rem; white-space: nowrap; }
+.diagnostic-setting-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(13rem,1fr)); gap: .75rem; }
+.diagnostic-setting-grid label { display: grid; gap: .4rem; padding: .9rem; background: #fff; border: 1px solid #dfe6e1; border-radius: .65rem; }
+.diagnostic-setting-grid label span { color: #40534a; font-size: .74rem; font-weight: 800; }
+.diagnostic-setting-grid input { max-width: 7rem; }
+.diagnostic-setting-grid small { color: #77847d; font-size: .65rem; line-height: 1.4; }
+.diagnostic-settings-view > button { justify-self: start; }
 .timeline { display: grid; grid-template-columns: repeat(auto-fill,minmax(15rem,1fr)); gap: .25rem; margin: 0; padding: 0; list-style: none; }
 .timeline li { position: relative; padding-left: 1.15rem; }
 .timeline li::before { content: ""; position: absolute; left: .25rem; top: .45rem; width: .45rem; height: .45rem; border-radius: 50%; background: #4b8a70; box-shadow: 0 0 0 3px #e3eee8; }

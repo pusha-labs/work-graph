@@ -68,7 +68,8 @@ type BidRiskAssessment={adjustedDurationMinutes:number;expectedDurationMinutes:n
 type StepBid={id:string;workflowStepId:string;actor:ActorSummary;promisedDurationMinutes:number;status:'active'|'withdrawn'|'won'|'lost';submittedAt:string;updatedAt:string;withdrawnAt:string|null;estimation:EstimationStats;riskAssessment?:BidRiskAssessment};
 type ExchangeOffer={nodeId:string;nodeTitle:string;rootId:string;rootTitle:string;stepId:string;stepName:string;stepPosition:number;requester:string;requirements:string[];knowledgeRequirements:string[];activeBidCount:number;myBid:StepBid|null};
 type PersonalRank = { rank: number; stepStatus: MyWorkItem['stepStatus']; stepName: string };
-type Diagnostic = { id:string; kind:'missing_requester'|'missing_outcome'|'wide_branch'|'agreed_duration_elapsed'|'requester_review_waiting'|'no_eligible_performer'|'open_descendants'|'uncovered_knowledge'|'concentrated_knowledge'; severity:'warning'|'error'; title:string; explanation:string; nodeId:string; nodeTitle:string; subjectId:string; subjectName:string; evidence:string[]; relatedNodeIds:string[] };
+type Diagnostic = { id:string; kind:'missing_requester'|'missing_outcome'|'wide_branch'|'agreed_duration_elapsed'|'requester_review_waiting'|'blocked_work_stagnant'|'no_eligible_performer'|'open_descendants'|'uncovered_knowledge'|'concentrated_knowledge'; severity:'warning'|'error'; title:string; explanation:string; nodeId:string; nodeTitle:string; subjectId:string; subjectName:string; evidence:string[]; relatedNodeIds:string[] };
+type DiagnosticSettings = { wideBranchChildren:number;requesterReviewDays:number;blockedWorkDays:number };
 type OnboardingStep={id:string;title:string;description:string;complete:boolean;action?:string;onAction?:()=>void};
 
 function orderPersonalWork(items:MyWorkItem[],rootScores:Record<string,number>,criticalNodeIds:Set<string>){
@@ -117,11 +118,12 @@ function App() {
   const [myWork,setMyWork]=useState<MyWorkItem[]>([]);
   const [exchangeOffers,setExchangeOffers]=useState<ExchangeOffer[]>([]);
   const [diagnostics,setDiagnostics]=useState<Diagnostic[]>([]);
+  const [diagnosticSettings,setDiagnosticSettings]=useState<DiagnosticSettings>({wideBranchChildren:8,requesterReviewDays:7,blockedWorkDays:14});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'workspace' | 'root' | 'child' | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<'my-work' | 'exchange' | 'structure' | 'history' | 'directory' | 'profile' | 'priorities' | 'secrets' | 'modules' | 'api-access'>('structure');
+  const [view, setView] = useState<'my-work' | 'exchange' | 'structure' | 'history' | 'directory' | 'profile' | 'priorities' | 'diagnostics' | 'secrets' | 'modules' | 'api-access'>('structure');
   const [previewRevision, setPreviewRevision] = useState<number | null>(null);
   const [previewNodes, setPreviewNodes] = useState<WorkNode[]>([]);
   const [onboardingDismissed,setOnboardingDismissed]=useState(false);
@@ -131,7 +133,7 @@ function App() {
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
   const accountId=auth?.account?.id;
   const canAdminister = directory.currentWorkspaceRole === 'owner' || directory.currentWorkspaceRole === 'admin';
-  const isAdminView = view === 'directory' || view === 'priorities' || view === 'modules' || view === 'secrets' || view === 'api-access';
+  const isAdminView = view === 'directory' || view === 'priorities' || view === 'diagnostics' || view === 'modules' || view === 'secrets' || view === 'api-access';
   const roots = useMemo(() => nodes.filter((node) => node.parentId === null), [nodes]);
   const structureNodes = previewRevision === null ? nodes : previewNodes;
   const structureRoots = structureNodes.filter((node) => node.parentId === null);
@@ -233,8 +235,9 @@ function App() {
       api<WorkspaceSecret[]>(`/api/v1/workspaces/${workspaceId}/secrets`),
       api<RemovedBranch[]>(`/api/v1/workspaces/${workspaceId}/removed-branches`),
       api<Diagnostic[]>(`/api/v1/workspaces/${workspaceId}/diagnostics`),
+      api<DiagnosticSettings>(`/api/v1/workspaces/${workspaceId}/diagnostic-settings`),
     ])
-      .then(([items, events, directoryData, profileData, subjects, priorityData, criticalityData, activityData,personalWork,offers,modules,secretItems,removedItems,diagnosticItems]) => {
+      .then(([items, events, directoryData, profileData, subjects, priorityData, criticalityData, activityData,personalWork,offers,modules,secretItems,removedItems,diagnosticItems,diagnosticSettingsData]) => {
         setNodes(items);
         setHistory(events);
         setDirectory(directoryData);
@@ -249,6 +252,7 @@ function App() {
         setSecrets(secretItems);
         setRemovedBranches(removedItems);
         setDiagnostics(diagnosticItems);
+        setDiagnosticSettings(diagnosticSettingsData);
         const requestedNode=deepLink.current.node;
         if(requestedNode&&items.some((item)=>item.id===requestedNode)){
           const ancestors:string[]=[];let cursor=items.find((item)=>item.id===requestedNode);
@@ -410,6 +414,7 @@ function App() {
   async function submitBid(offer:ExchangeOffer,promisedDurationMinutes:number){await api(`/api/v1/workspaces/${workspaceId}/nodes/${offer.nodeId}/workflow-steps/${offer.stepId}/bids/me`,{method:'PUT',body:JSON.stringify({promisedDurationMinutes})});await Promise.all([refreshExchange(),refreshActivity()]);}
   async function withdrawBid(offer:ExchangeOffer){await api(`/api/v1/workspaces/${workspaceId}/nodes/${offer.nodeId}/workflow-steps/${offer.stepId}/bids/me`,{method:'DELETE'});await Promise.all([refreshExchange(),refreshActivity()]);}
   async function refreshDiagnostics(){setDiagnostics(await api<Diagnostic[]>(`/api/v1/workspaces/${workspaceId}/diagnostics`));}
+  async function updateDiagnosticSettings(input:DiagnosticSettings){const result=await api<DiagnosticSettings>(`/api/v1/workspaces/${workspaceId}/diagnostic-settings`,{method:'PATCH',body:JSON.stringify(input)});setDiagnosticSettings(result);await refreshDiagnostics()}
   async function refreshSecrets(){setSecrets(await api<WorkspaceSecret[]>(`/api/v1/workspaces/${workspaceId}/secrets`));}
   async function createSecret(name:string,secretType:WorkspaceSecret['secretType'],value:string){await api(`/api/v1/workspaces/${workspaceId}/secrets`,{method:'POST',body:JSON.stringify({name,secretType,value})});await refreshSecrets();}
   async function rotateSecret(secretId:string,value:string){await api(`/api/v1/workspaces/${workspaceId}/secrets/${secretId}/rotate`,{method:'POST',body:JSON.stringify({value})});await refreshSecrets();}
@@ -561,7 +566,7 @@ function App() {
             </select>
           ) : <p className="muted">No workspace yet.</p>}
           <button className="secondary" type="button" onClick={() => setDialog('workspace')}>+ New workspace</button>
-          {isAdminView ? <div className="admin-sidebar"><p className="sidebar-heading">Administration</p><small>Workspace settings, access, automation, and shared knowledge.</small><div className="admin-nav"><button className={view==='directory'?'selected':''} onClick={()=>setView('directory')}>People &amp; knowledge</button><button className={view==='priorities'?'selected':''} onClick={()=>setView('priorities')}>Priority decisions{priorities.conflicts.some((item)=>!item.chosenRootId)&&<i className="nav-alert"/>}</button><button className={view==='modules'?'selected':''} onClick={()=>setView('modules')}>Modules</button><button className={view==='secrets'?'selected':''} onClick={()=>setView('secrets')}>Secrets</button><button className={view==='api-access'?'selected':''} onClick={()=>setView('api-access')}>API access</button></div><button className="back-to-work" onClick={()=>setView('structure')}>← Back to work tree</button></div> : <><div className="sidebar-heading"><span>Goals</span>{currentWorkspace && <button className="icon-button" title="New root goal" onClick={() => setDialog('root')}>+</button>}</div><div className="root-list">
+          {isAdminView ? <div className="admin-sidebar"><p className="sidebar-heading">Administration</p><small>Workspace settings, access, automation, and shared knowledge.</small><div className="admin-nav"><button className={view==='directory'?'selected':''} onClick={()=>setView('directory')}>People &amp; knowledge</button><button className={view==='priorities'?'selected':''} onClick={()=>setView('priorities')}>Priority decisions{priorities.conflicts.some((item)=>!item.chosenRootId)&&<i className="nav-alert"/>}</button><button className={view==='diagnostics'?'selected':''} onClick={()=>setView('diagnostics')}>Diagnostics</button><button className={view==='modules'?'selected':''} onClick={()=>setView('modules')}>Modules</button><button className={view==='secrets'?'selected':''} onClick={()=>setView('secrets')}>Secrets</button><button className={view==='api-access'?'selected':''} onClick={()=>setView('api-access')}>API access</button></div><button className="back-to-work" onClick={()=>setView('structure')}>← Back to work tree</button></div> : <><div className="sidebar-heading"><span>Goals</span>{currentWorkspace && <button className="icon-button" title="New root goal" onClick={() => setDialog('root')}>+</button>}</div><div className="root-list">
             {roots.map((root) => <button key={root.id} className={selected?.rootId === root.id ? 'selected' : ''} onClick={() => {returnToCurrent();setSelectedId(root.id);setView('structure')}}><span className={`dot ${root.lifecycleStatus}`} />{root.title}{criticalNodeIds.has(root.id)&&<i className="critical-mark" title="A descendant branch is temporarily critical">!</i>}</button>)}
           </div></>}
         </aside>
@@ -585,6 +590,8 @@ function App() {
             <AdminSurface title="API access"><ServiceAccountsView items={serviceAccounts} credential={issuedCredential} busy={busy} perform={perform} onDismissCredential={()=>setIssuedCredential(null)} onCreate={createServiceAccount} onRotate={rotateServiceAccount} onRevoke={revokeServiceAccount}/></AdminSurface>
           ) : view === 'priorities' ? (
             <AdminSurface title="Priority decisions"><PriorityView inbox={priorities} busy={busy} perform={perform} onDecide={decidePriority} /></AdminSurface>
+          ) : view === 'diagnostics' ? (
+            <AdminSurface title="Diagnostics"><DiagnosticSettingsView value={diagnosticSettings} diagnostics={diagnostics} busy={busy} perform={perform} onSave={updateDiagnosticSettings}/></AdminSurface>
           ) : !selected ? (
             <EmptyState title="Create your first goal" text="Every task will remain connected to a larger purpose." action="Create root goal" onAction={() => setDialog('root')} />
           ) : (
@@ -620,6 +627,12 @@ function AuthShell({ children }: { children: ReactNode }) {
 
 function AdminSurface({title,children}:{title:string;children:ReactNode}) {
   return <section className="admin-surface"><header><div><p className="eyebrow">Administration</p><strong>{title}</strong></div><span>Changes here affect the entire workspace</span></header>{children}</section>;
+}
+
+function DiagnosticSettingsView({value,diagnostics,busy,perform,onSave}:{value:DiagnosticSettings;diagnostics:Diagnostic[];busy:boolean;perform:(action:()=>Promise<void>)=>Promise<void>;onSave:(input:DiagnosticSettings)=>Promise<void>}){
+  const [draft,setDraft]=useState(value);useEffect(()=>setDraft(value),[value]);
+  const field=(key:keyof DiagnosticSettings,label:string,help:string,min:number,max:number)=><label><span>{label}</span><input type="number" min={min} max={max} value={draft[key]} onChange={(event)=>setDraft({...draft,[key]:Number(event.target.value)})}/><small>{help}</small></label>;
+  return <section className="diagnostic-settings-view"><header><div><h2>Attention thresholds</h2><p>Choose when structural and timing signals become useful. These settings never change task status or priority.</p></div><strong>{diagnostics.length} active signal{diagnostics.length===1?'':'s'}</strong></header><div className="diagnostic-setting-grid">{field('wideBranchChildren','Open children in one branch','Suggest grouping after this many direct open child tasks.',4,50)}{field('requesterReviewDays','Days awaiting requester review','Warn only after all descendant work is closed.',1,90)}{field('blockedWorkDays','Days continuously blocked','Uses the latest transition into blocked status.',1,365)}</div><button disabled={busy} onClick={()=>perform(()=>onSave(draft))}>Save thresholds</button></section>;
 }
 
 function AuthScreen({ setupRequired, registrationEnabled,passwordResetEnabled, onAuthenticated }: { setupRequired: boolean; registrationEnabled: boolean;passwordResetEnabled:boolean; onAuthenticated: (account: Account,newAccount?:boolean) => Promise<void> }) {

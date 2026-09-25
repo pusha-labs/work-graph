@@ -62,11 +62,11 @@ The Directory also maintains knowledge subjects such as services, projects, syst
 
 Task circles can combine role and skill requirements with knowledge of specific entities. Performer matching and task claiming require one actor to satisfy every declared condition, for example `Engineer + Python + Product A`.
 
-Task circles can contain an ordered sequence of human workflow steps. Each step has its own capability and entity-knowledge requirements, is claimed independently, and unlocks the next step when completed. The requester remains the first participant and the only person who can provide final acceptance.
+Task circles contain an ordered sequence of stages. Each stage can be human or automated, has its own requirements and execution history, and unlocks the next stage when completed. The requester remains the first participant and the only person who can provide final acceptance.
 
-Human work will be offered through a step-level exchange rather than assigned by employee name. Eligible people propose a duration independently for each step; the initial policy selects the shortest estimate, while preserved execution observations enable later risk-aware selection. The agreed model is documented in [Human-Step Exchange](docs/task-exchange.md).
+Human work will be offered through a stage-level exchange rather than assigned by employee name. Eligible people propose a duration independently for each human stage; the initial policy selects the shortest estimate, while preserved execution observations enable later risk-aware selection. The agreed model is documented in [Human-Step Exchange](docs/task-exchange.md).
 
-The Task circle UI presents that sequence as one continuous route: requester, numbered workflow steps, an explicit **Add next step** action, and requester acceptance. Matching details stay available without obscuring the normal start-and-complete workflow.
+The Task Circle UI presents that sequence as a connected circle: requester, numbered stages, an explicit **Add stage** action, and a route that returns to requester acceptance. Matching details stay available without obscuring the normal start-and-complete workflow.
 
 The next-step composer resolves one intent into either human requirements or an installed workflow module. The first built-in module editors configure HTTP requests and Bash scripts, persist their versioned configuration, and keep execution disabled until an isolated runner is available. Automated modules use schema-driven editors and execute through a separate isolated runner; see [ADR 0004](docs/adr/0004-workflow-modules-and-isolated-execution.md).
 
@@ -74,7 +74,7 @@ Workflow modules are discovered through a database-backed registry. Each registe
 
 The composer renders module fields directly from that schema, including text, URL, selection, numeric, multiline, and code inputs. The API applies the same schema contract to required fields, primitive types, and allowed options, so adding a differently shaped module no longer requires a Task circle UI change.
 
-Before execution starts, clicking a route card opens its editor. Step names, human matching requirements, and module configuration can be changed; steps can also be moved earlier or later or removed. The API rejects structural edits after work starts and prevents deletion of the final remaining step. Every accepted edit advances the workspace revision and is attributed in activity history.
+Before execution starts, clicking a stage opens its editor. Stage names, human matching requirements, and module configuration can be changed; stages can also be moved earlier or later or removed. A circle may remain empty until its requester adds the first stage. The API rejects structural edits after work starts. Every accepted edit advances the workspace revision and is attributed in activity history.
 
 Each workflow step now has a separate execution-attempt history. Claiming human work starts a numbered attempt, completion records its finish, and requester returns mark the affected successful attempts as returned or superseded. Every attempt preserves a snapshot of the exact step name, type, module version, configuration, and matching requirements that were in force when it started.
 

@@ -476,6 +476,11 @@ textarea { resize: vertical; line-height: 1.5; }
 .timeline { display: grid; grid-template-columns: repeat(auto-fill,minmax(15rem,1fr)); gap: .25rem; margin: 0; padding: 0; list-style: none; }
 .timeline li { position: relative; padding-left: 1.15rem; }
 .timeline li::before { content: ""; position: absolute; left: .25rem; top: .45rem; width: .45rem; height: .45rem; border-radius: 50%; background: #4b8a70; box-shadow: 0 0 0 3px #e3eee8; }
+.timeline .timeline-day { grid-column: 1 / -1; margin: .45rem 0 .15rem; padding: 0; }
+.timeline .timeline-day:first-child { margin-top: 0; }
+.timeline .timeline-day::before { display: none; }
+.timeline-day time { display: flex; align-items: center; gap: .65rem; color: #69776f; font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .055em; }
+.timeline-day time::after { content: ""; flex: 1; height: 1px; background: #e1e7e3; }
 .timeline button { display: grid; grid-template-columns: auto 1fr; gap: .55rem; width: 100%; padding: .55rem; color: #30423a; background: transparent; text-align: left; }
 .timeline button:hover { background: #edf3ef; }
 .timeline button.active { background: #e1eee7; box-shadow: inset 3px 0 #397b60; }

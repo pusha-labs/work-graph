@@ -1,4 +1,4 @@
-import { createContext, FormEvent, ReactNode, StrictMode, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, FormEvent, Fragment, ReactNode, StrictMode, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -839,16 +839,19 @@ function ActivityPanel({ items, activeRevision, busy, historyMode, onPreview }: 
   const normalizedQuery=query.trim().toLocaleLowerCase();
   const visibleItems=items.filter((item)=>(filter==='all'||category(item)===filter)&&(!normalizedQuery||`${item.summary} ${item.detail} ${item.nodeTitle} ${item.actorName} ${item.eventType}`.toLocaleLowerCase().includes(normalizedQuery)));
   const count=(value:'tree'|'circle'|'workspace')=>items.filter((item)=>category(item)===value).length;
+  const dayKey=(value:string)=>new Date(value).toLocaleDateString();
+  const dayLabel=(value:string)=>{const date=new Date(value);const today=new Date();const yesterday=new Date(today);yesterday.setDate(today.getDate()-1);if(date.toDateString()===today.toDateString())return 'Today';if(date.toDateString()===yesterday.toDateString())return 'Yesterday';return date.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'})};
   return <details className={`history-panel ${historyMode?'history-mode':''}`} open={historyMode||activeRevision!==null}>
     <summary><span>{historyMode?'Revision timeline':'Activity & history'}</span><small>{items.length} events · {historyMode?'select a moment':'browse revisions'}</small></summary>
     <div className="history-content">{historyMode&&items.length>0&&<div className="history-controls"><nav className="history-filters" aria-label="History event filters">{([['all','All',items.length],['tree','Tree',count('tree')],['circle','Task circle',count('circle')],['workspace','Workspace',count('workspace')]] as const).map(([value,label,total])=><button key={value} className={filter===value?'active':''} onClick={()=>setFilter(value)}>{label}<span>{total}</span></button>)}</nav><label className="history-search"><span>⌕</span><input value={query} aria-label="Search history" placeholder="Search task, person, or change…" onChange={(event)=>setQuery(event.target.value)}/>{query&&<button aria-label="Clear history search" onClick={()=>setQuery('')}>×</button>}</label></div>}{items.length === 0 ? <p className="muted">Activity will appear here.</p> : visibleItems.length===0?<p className="history-empty">No matching events in the recent history.</p>:<ol className="timeline">
-      {visibleItems.map((item) => {
-        return <li key={item.id}>
+      {visibleItems.map((item,index) => {
+        const startsDay=index===0||dayKey(visibleItems[index-1].occurredAt)!==dayKey(item.occurredAt);
+        return <Fragment key={item.id}>{startsDay&&<li className="timeline-day"><time dateTime={item.occurredAt.slice(0,10)}>{dayLabel(item.occurredAt)}</time></li>}<li>
           <button className={activeRevision === item.workspaceRevision ? 'active' : ''} disabled={busy || !item.canPreview} onClick={() => item.canPreview && item.workspaceRevision && item.nodeId && onPreview(item.workspaceRevision, item.nodeId)}>
             <span className="revision">{item.workspaceRevision ? `r${item.workspaceRevision}` : '•'}</span>
             <span className="event-copy"><strong>{item.summary}</strong><small>{item.nodeTitle&&item.nodeTitle!==item.detail?`${item.nodeTitle}${item.detail?` · ${item.detail}`:''}`:item.detail}</small><time>{item.actorName} · {new Date(item.occurredAt).toLocaleString()}</time></span>
           </button>
-        </li>;
+        </li></Fragment>;
       })}
     </ol>}</div>
   </details>;

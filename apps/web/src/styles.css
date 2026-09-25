@@ -299,6 +299,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .circle-node.add { color:#356d55; background:#f7fbf8; border:2px dashed #70a78d; cursor:pointer; }
 .circle-node.add .circle-node-number { background:#39775e; font-size:1rem; }
 .circle-node.add:hover { background:#e8f4ed; }
+.circle-node.selected { outline:3px solid rgba(56,110,85,.3); outline-offset:3px; }
 .circle-node.has-ball { border-color:#cf861d; box-shadow:0 0 0 3px rgba(224,149,39,.18),0 9px 22px rgba(64,54,30,.15); }
 .card-ball { position:absolute; top:-.5rem; right:-.45rem; width:1rem; height:1rem; animation:ball-pulse 1.8s ease-in-out infinite; }
 @keyframes ball-pulse { 50% { transform:translateY(-2px); box-shadow:0 0 0 4px rgba(244,166,42,.2),0 3px 7px rgba(78,48,8,.3); } }
@@ -351,6 +352,8 @@ textarea { resize: vertical; line-height: 1.5; }
 .step-editor { display: grid; gap: .65rem; margin-top: .8rem; padding: .85rem; background: #f8faf9; border: 1px solid #cfded6; border-radius: .75rem; }
 .step-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .step-editor-heading h4 { margin: .1rem 0 0; }
+.step-editor-heading-actions { display:flex; align-items:center; gap:.4rem; }
+.step-editor-heading-actions .danger { color:#8a3f3f; background:#fff2f2; border-color:#e5bcbc; }
 .step-editor-requirements { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
 .step-distribution { display:grid; gap:.35rem; color:#607068; font-size:.68rem; font-weight:700; }
 .step-bids { display:grid; gap:.4rem; padding:.8rem; background:#f7faf8; border:1px solid #dce5df; border-radius:.65rem; }
@@ -365,7 +368,6 @@ textarea { resize: vertical; line-height: 1.5; }
 .step-bids p.lost,.step-bids p.withdrawn { opacity:.6; }
 .step-bids > button { justify-self:end; padding:.55rem .7rem; font-size:.68rem; }
 .step-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
-.step-editor-actions .danger { margin-right: auto; color: #8a3f3f; background: #fff2f2; border-color: #e5bcbc; }
 .execution-history { display: grid; gap: .55rem; padding-top: .65rem; border-top: 1px solid #dce5e0; }
 .execution-history > div { display: flex; align-items: baseline; justify-content: space-between; }
 .execution-history h4, .execution-history p { margin: 0; }

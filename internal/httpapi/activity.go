@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,26 @@ type activityItem struct {
 
 func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 	workspaceID := r.PathValue("workspaceID")
+	limit := 200
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 200 {
+			writeError(w, http.StatusBadRequest, "limit must be between 1 and 200")
+			return
+		}
+		limit = parsed
+	}
+	before := time.Now().UTC().Add(time.Second)
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "before must be an RFC3339 timestamp")
+			return
+		}
+		before = parsed
+	}
+	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	fetchLimit := limit + 1
 	items := []activityItem{}
 	rows, err := s.db.Query(r.Context(), `
 		WITH event_rows AS (
@@ -31,7 +52,7 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 			       COALESCE(NULLIF(ce.after_state->>'nodeId',''),
 			                CASE WHEN ce.entity_type='work_node' THEN ce.entity_id::text END,
 			                (SELECT ws.work_node_id::text FROM workflow_step_bids b JOIN workflow_steps ws ON ws.id=b.workflow_step_id WHERE b.id=ce.entity_id)) AS resolved_node_id
-			FROM change_events ce WHERE ce.workspace_id=$1
+			FROM change_events ce WHERE ce.workspace_id=$1 AND ce.occurred_at<$2
 		)
 		SELECT ce.id::text,ce.event_type,ce.entity_type,ce.entity_id::text,ce.workspace_revision,ce.occurred_at,
 		       COALESCE(a.display_name,'System'),
@@ -39,7 +60,8 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		       ce.resolved_node_id,COALESCE(n.title,''),ce.after_state
 		FROM event_rows ce LEFT JOIN actors a ON a.id=ce.actor_id
 		LEFT JOIN work_nodes n ON n.id::text=ce.resolved_node_id
-		ORDER BY ce.occurred_at DESC LIMIT 200`, workspaceID)
+		WHERE $3='' OR lower(concat_ws(' ',ce.event_type,ce.after_state::text,ce.before_state::text,a.display_name,n.title)) LIKE '%' || $3 || '%'
+		ORDER BY ce.occurred_at DESC LIMIT $4`, workspaceID, before, search, fetchLimit)
 	if err != nil {
 		s.internalError(w, "list change activity", err)
 		return
@@ -105,7 +127,9 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		SELECT pd.id::text,l.title,r.title,c.title,pd.decision_basis,a.display_name,pd.created_at
 		FROM priority_decisions pd JOIN work_nodes l ON l.id=pd.left_root_id JOIN work_nodes r ON r.id=pd.right_root_id
 		LEFT JOIN work_nodes c ON c.id=pd.chosen_root_id JOIN accounts a ON a.id=pd.decided_by
-		WHERE pd.workspace_id=$1`, workspaceID)
+		WHERE pd.workspace_id=$1 AND pd.created_at<$2
+		AND ($3='' OR lower(concat_ws(' ',l.title,r.title,c.title,pd.decision_basis,a.display_name,'priority decision')) LIKE '%' || $3 || '%')
+		ORDER BY pd.created_at DESC LIMIT $4`, workspaceID, before, search, fetchLimit)
 	if err != nil {
 		s.internalError(w, "list priority activity", err)
 		return
@@ -133,7 +157,9 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 	criticalRows, err := s.db.Query(r.Context(), `
 		SELECT cs.id::text,n.title,cs.reason,cs.critical_until,creator.display_name,cs.created_at,cs.revoked_at,COALESCE(revoker.display_name,'')
 		FROM criticality_signals cs JOIN work_nodes n ON n.id=cs.work_node_id JOIN accounts creator ON creator.id=cs.created_by
-		LEFT JOIN accounts revoker ON revoker.id=cs.revoked_by WHERE cs.workspace_id=$1`, workspaceID)
+		LEFT JOIN accounts revoker ON revoker.id=cs.revoked_by WHERE cs.workspace_id=$1 AND (cs.created_at<$2 OR cs.revoked_at<$2)
+		AND ($3='' OR lower(concat_ws(' ',n.title,cs.reason,creator.display_name,revoker.display_name,'critical')) LIKE '%' || $3 || '%')
+		ORDER BY cs.created_at DESC LIMIT $4`, workspaceID, before, search, fetchLimit)
 	if err != nil {
 		s.internalError(w, "list criticality activity", err)
 		return
@@ -153,7 +179,7 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	criticalRows.Close()
-	auditRows, err := s.db.Query(r.Context(), `SELECT wae.id::text,wae.event_type,wae.summary,wae.detail,a.display_name,wae.occurred_at FROM workspace_audit_events wae JOIN accounts a ON a.id=wae.account_id WHERE wae.workspace_id=$1`, workspaceID)
+	auditRows, err := s.db.Query(r.Context(), `SELECT wae.id::text,wae.event_type,wae.summary,wae.detail,a.display_name,wae.occurred_at FROM workspace_audit_events wae JOIN accounts a ON a.id=wae.account_id WHERE wae.workspace_id=$1 AND wae.occurred_at<$2 AND ($3='' OR lower(concat_ws(' ',wae.event_type,wae.summary,wae.detail,a.display_name)) LIKE '%' || $3 || '%') ORDER BY wae.occurred_at DESC LIMIT $4`, workspaceID, before, search, fetchLimit)
 	if err != nil {
 		s.internalError(w, "list workspace audit activity", err)
 		return
@@ -169,8 +195,15 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	auditRows.Close()
 	sort.Slice(items, func(i, j int) bool { return items[i].OccurredAt.After(items[j].OccurredAt) })
-	if len(items) > 200 {
-		items = items[:200]
+	filtered := items[:0]
+	for _, item := range items {
+		if item.OccurredAt.Before(before) {
+			filtered = append(filtered, item)
+		}
+	}
+	items = filtered
+	if len(items) > limit {
+		items = items[:limit]
 	}
 	writeJSON(w, http.StatusOK, items)
 }

@@ -39,6 +39,8 @@ The self-hosted data-safety baseline is now present: checksummed PostgreSQL arch
 
 The first-run usability baseline now includes a dismissible, per-user guide derived from real workspace state rather than a separate tutorial database.
 
+The history baseline now includes readable Task Circle evidence, event-type filters, server-side search across task, actor, and change context, and timestamp-based pagination beyond the most recent 200 events.
+
 The public-contributor baseline now includes automated push and pull-request verification for backend tests, the production web build, operational scripts, and isolated backup/restore, plus a contribution guide tied to the project's vision and ADRs.
 
 The demo path now has an isolated deployment smoke-test that verifies clean startup, repeatable seeding, authentication, the house tree, intentional diagnostic examples, and the service-token lifecycle on every push and pull request.

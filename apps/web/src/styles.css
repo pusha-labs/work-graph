@@ -473,6 +473,8 @@ textarea { resize: vertical; line-height: 1.5; }
 .history-search input { width: 100%; padding: .45rem .55rem; font-size: .68rem; }
 .history-search button { padding: .25rem .4rem; color: #66756d; background: transparent; }
 .history-empty { margin: .75rem; color: #78857e; font-size: .72rem; }
+.history-load-more { display: block; margin: .85rem auto .2rem; padding: .5rem .85rem; color: #35634f; background: #edf3ef; border: 1px solid #d3dfd8; font-size: .68rem; }
+.history-load-more:hover { background: #e2eee7; }
 .timeline { display: grid; grid-template-columns: repeat(auto-fill,minmax(15rem,1fr)); gap: .25rem; margin: 0; padding: 0; list-style: none; }
 .timeline li { position: relative; padding-left: 1.15rem; }
 .timeline li::before { content: ""; position: absolute; left: .25rem; top: .45rem; width: .45rem; height: .45rem; border-radius: 50%; background: #4b8a70; box-shadow: 0 0 0 3px #e3eee8; }

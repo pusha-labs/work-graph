@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -33,7 +35,7 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		SELECT ce.id::text,ce.event_type,ce.entity_type,ce.entity_id::text,ce.workspace_revision,ce.occurred_at,
 		       COALESCE(a.display_name,'System'),
 		       COALESCE(ce.after_state->>'title',ce.after_state->>'name',ce.after_state->>'direction',ce.after_state->'capability'->>'name',ce.after_state->'knowledgeSubject'->>'name',CASE WHEN ce.event_type='workflow.returned' THEN (ce.after_state->'workflowStep'->>'name') || ' · ' || (ce.after_state->>'reason') ELSE ce.after_state->'workflowStep'->>'name' END,''),
-		       ce.resolved_node_id,COALESCE(n.title,'')
+		       ce.resolved_node_id,COALESCE(n.title,''),ce.after_state
 		FROM event_rows ce LEFT JOIN actors a ON a.id=ce.actor_id
 		LEFT JOIN work_nodes n ON n.id::text=ce.resolved_node_id
 		ORDER BY ce.occurred_at DESC LIMIT 200`, workspaceID)
@@ -45,12 +47,14 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		var item activityItem
 		var entityType, entityID string
 		var revision int64
-		if err := rows.Scan(&item.ID, &item.EventType, &entityType, &entityID, &revision, &item.OccurredAt, &item.ActorName, &item.Detail, &item.NodeID, &item.NodeTitle); err != nil {
+		var afterState json.RawMessage
+		if err := rows.Scan(&item.ID, &item.EventType, &entityType, &entityID, &revision, &item.OccurredAt, &item.ActorName, &item.Detail, &item.NodeID, &item.NodeTitle, &afterState); err != nil {
 			rows.Close()
 			s.internalError(w, "read change activity", err)
 			return
 		}
 		item.WorkspaceRevision = &revision
+		item.Detail = describeActivity(item.EventType, afterState, item.Detail)
 		switch item.EventType {
 		case "node.created":
 			item.Summary = "Work created"
@@ -168,4 +172,71 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		items = items[:200]
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func describeActivity(eventType string, raw json.RawMessage, fallback string) string {
+	var value map[string]any
+	if json.Unmarshal(raw, &value) != nil {
+		return fallback
+	}
+	text := func(item map[string]any, key string) string {
+		result, _ := item[key].(string)
+		return result
+	}
+	number := func(item map[string]any, key string) int {
+		result, _ := item[key].(float64)
+		return int(result)
+	}
+	step, _ := value["workflowStep"].(map[string]any)
+	actor, _ := value["actor"].(map[string]any)
+	switch eventType {
+	case "workflow_step.added":
+		name, kind, position := text(step, "name"), text(step, "stepType"), number(step, "position")
+		if name != "" && position > 0 {
+			return fmt.Sprintf("%s · step %d · %s", name, position, kind)
+		}
+	case "workflow_step.updated":
+		if name := text(value, "name"); name != "" {
+			return name + " · route definition updated"
+		}
+	case "workflow_step.moved":
+		if direction := text(value, "direction"); direction != "" {
+			return "Moved " + direction + " in the route"
+		}
+	case "workflow_step.deleted":
+		return "Route step removed"
+	case "workflow_step_bid.submitted", "workflow_step_bid.updated", "workflow_step_bid.withdrawn":
+		name, minutes := text(actor, "displayName"), number(value, "promisedDurationMinutes")
+		if minutes > 0 {
+			return fmt.Sprintf("%s · %s", name, formatActivityDuration(minutes))
+		}
+	case "workflow_step_bid.selected":
+		if minutes := number(value, "promisedDurationMinutes"); minutes > 0 {
+			return "Shortest estimate selected · " + formatActivityDuration(minutes)
+		}
+	case "workflow.returned":
+		name, reason := text(step, "name"), text(value, "reason")
+		if name != "" && reason != "" {
+			return name + " · " + reason
+		}
+	}
+	return fallback
+}
+
+func formatActivityDuration(minutes int) string {
+	if minutes%1440 == 0 {
+		days := minutes / 1440
+		if days == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", days)
+	}
+	if minutes%60 == 0 {
+		hours := minutes / 60
+		if hours == 1 {
+			return "1 hour"
+		}
+		return fmt.Sprintf("%d hours", hours)
+	}
+	return fmt.Sprintf("%d minutes", minutes)
 }

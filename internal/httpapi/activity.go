@@ -15,6 +15,7 @@ type activityItem struct {
 	OccurredAt        time.Time `json:"occurredAt"`
 	WorkspaceRevision *int64    `json:"workspaceRevision"`
 	NodeID            *string   `json:"nodeId"`
+	NodeTitle         string    `json:"nodeTitle"`
 	CanPreview        bool      `json:"canPreview"`
 }
 
@@ -22,11 +23,20 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 	workspaceID := r.PathValue("workspaceID")
 	items := []activityItem{}
 	rows, err := s.db.Query(r.Context(), `
+		WITH event_rows AS (
+			SELECT ce.*,
+			       COALESCE(NULLIF(ce.after_state->>'nodeId',''),
+			                CASE WHEN ce.entity_type='work_node' THEN ce.entity_id::text END,
+			                (SELECT ws.work_node_id::text FROM workflow_step_bids b JOIN workflow_steps ws ON ws.id=b.workflow_step_id WHERE b.id=ce.entity_id)) AS resolved_node_id
+			FROM change_events ce WHERE ce.workspace_id=$1
+		)
 		SELECT ce.id::text,ce.event_type,ce.entity_type,ce.entity_id::text,ce.workspace_revision,ce.occurred_at,
 		       COALESCE(a.display_name,'System'),
-		       COALESCE(ce.after_state->>'title',ce.after_state->>'name',ce.after_state->>'direction',ce.after_state->'capability'->>'name',ce.after_state->'knowledgeSubject'->>'name',CASE WHEN ce.event_type='workflow.returned' THEN (ce.after_state->'workflowStep'->>'name') || ' · ' || (ce.after_state->>'reason') ELSE ce.after_state->'workflowStep'->>'name' END,'')
-		FROM change_events ce LEFT JOIN actors a ON a.id=ce.actor_id
-		WHERE ce.workspace_id=$1 ORDER BY ce.occurred_at DESC LIMIT 200`, workspaceID)
+		       COALESCE(ce.after_state->>'title',ce.after_state->>'name',ce.after_state->>'direction',ce.after_state->'capability'->>'name',ce.after_state->'knowledgeSubject'->>'name',CASE WHEN ce.event_type='workflow.returned' THEN (ce.after_state->'workflowStep'->>'name') || ' · ' || (ce.after_state->>'reason') ELSE ce.after_state->'workflowStep'->>'name' END,''),
+		       ce.resolved_node_id,COALESCE(n.title,'')
+		FROM event_rows ce LEFT JOIN actors a ON a.id=ce.actor_id
+		LEFT JOIN work_nodes n ON n.id::text=ce.resolved_node_id
+		ORDER BY ce.occurred_at DESC LIMIT 200`, workspaceID)
 	if err != nil {
 		s.internalError(w, "list change activity", err)
 		return
@@ -35,7 +45,7 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		var item activityItem
 		var entityType, entityID string
 		var revision int64
-		if err := rows.Scan(&item.ID, &item.EventType, &entityType, &entityID, &revision, &item.OccurredAt, &item.ActorName, &item.Detail); err != nil {
+		if err := rows.Scan(&item.ID, &item.EventType, &entityType, &entityID, &revision, &item.OccurredAt, &item.ActorName, &item.Detail, &item.NodeID, &item.NodeTitle); err != nil {
 			rows.Close()
 			s.internalError(w, "read change activity", err)
 			return
@@ -79,10 +89,10 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		default:
 			item.Summary = item.EventType
 		}
-		if entityType == "work_node" {
+		if item.NodeID == nil && entityType == "work_node" {
 			item.NodeID = &entityID
-			item.CanPreview = true
 		}
+		item.CanPreview = item.NodeID != nil
 		items = append(items, item)
 	}
 	rows.Close()

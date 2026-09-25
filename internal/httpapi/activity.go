@@ -196,14 +196,25 @@ func describeActivity(eventType string, raw json.RawMessage, fallback string) st
 			return fmt.Sprintf("%s · step %d · %s", name, position, kind)
 		}
 	case "workflow_step.updated":
-		if name := text(value, "name"); name != "" {
+		name, previousName := text(value, "name"), text(value, "previousName")
+		if name != "" && previousName != "" && name != previousName {
+			return previousName + " → " + name
+		}
+		if name != "" {
 			return name + " · route definition updated"
 		}
 	case "workflow_step.moved":
+		name, from, to := text(value, "name"), number(value, "fromPosition"), number(value, "toPosition")
+		if name != "" && from > 0 && to > 0 {
+			return fmt.Sprintf("%s · step %d → %d", name, from, to)
+		}
 		if direction := text(value, "direction"); direction != "" {
 			return "Moved " + direction + " in the route"
 		}
 	case "workflow_step.deleted":
+		if name, position := text(value, "name"), number(value, "position"); name != "" && position > 0 {
+			return fmt.Sprintf("%s · removed step %d", name, position)
+		}
 		return "Route step removed"
 	case "workflow_step_bid.submitted", "workflow_step_bid.updated", "workflow_step_bid.withdrawn":
 		name, minutes := text(actor, "displayName"), number(value, "promisedDurationMinutes")

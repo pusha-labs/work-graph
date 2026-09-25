@@ -48,9 +48,9 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "workflow can only be edited before work starts")
 		return
 	}
-	var stepType string
+	var stepType, previousName string
 	var moduleID, moduleVersion *string
-	if err = tx.QueryRow(r.Context(), `SELECT step_type,module_id,module_version FROM workflow_steps WHERE id=$1 AND work_node_id=$2 FOR UPDATE`, stepID, nodeID).Scan(&stepType, &moduleID, &moduleVersion); err != nil {
+	if err = tx.QueryRow(r.Context(), `SELECT step_type,module_id,module_version,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2 FOR UPDATE`, stepID, nodeID).Scan(&stepType, &moduleID, &moduleVersion, &previousName); err != nil {
 		s.writeDatabaseError(w, "find workflow step", err)
 		return
 	}
@@ -118,7 +118,7 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		s.writeDatabaseError(w, "find workflow author", err)
 		return
 	}
-	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name})
+	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name, "previousName": previousName})
 	if _, err = tx.Exec(r.Context(), `WITH event AS (INSERT INTO change_events(workspace_id,root_id,workspace_revision,correlation_id,entity_type,entity_id,event_type,after_state,actor_id) VALUES($1,$2,$3,uuidv7(),'workflow_step',$4,'workflow_step.updated',$5,$6) RETURNING correlation_id) INSERT INTO outbox_events(workspace_id,event_type,aggregate_type,aggregate_id,payload,workspace_revision,actor_id,correlation_id) SELECT $1,'workflow_step.updated','work_node',$7,$5,$3,$6,correlation_id FROM event`, workspaceID, rootID, revision, stepID, json.RawMessage(after), actorID, nodeID); err != nil {
 		s.internalError(w, "record workflow update", err)
 		return
@@ -158,7 +158,8 @@ func (s *server) moveWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var position int
-	if err = tx.QueryRow(r.Context(), `SELECT position FROM workflow_steps WHERE id=$1 AND work_node_id=$2`, stepID, nodeID).Scan(&position); err != nil {
+	var stepName string
+	if err = tx.QueryRow(r.Context(), `SELECT position,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2`, stepID, nodeID).Scan(&position, &stepName); err != nil {
 		s.writeDatabaseError(w, "find workflow step", err)
 		return
 	}
@@ -185,7 +186,7 @@ func (s *server) moveWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actorID, _ := s.currentActorID(r.Context(), workspaceID)
-	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "direction": input.Direction})
+	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": stepName, "direction": input.Direction, "fromPosition": position, "toPosition": position + delta})
 	if _, err = tx.Exec(r.Context(), `INSERT INTO change_events(workspace_id,root_id,workspace_revision,correlation_id,entity_type,entity_id,event_type,after_state,actor_id) VALUES($1,$2,$3,uuidv7(),'workflow_step',$4,'workflow_step.moved',$5,$6)`, workspaceID, rootID, revision, stepID, json.RawMessage(after), actorID); err != nil {
 		s.internalError(w, "record workflow move", err)
 		return
@@ -214,13 +215,19 @@ func (s *server) deleteWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "workflow can only be edited before work starts")
 		return
 	}
-	var count, position int
-	if err = tx.QueryRow(r.Context(), `SELECT count(*),max(position) FILTER (WHERE id=$2) FROM workflow_steps WHERE work_node_id=$1`, nodeID, stepID).Scan(&count, &position); err != nil {
+	var count int
+	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM workflow_steps WHERE work_node_id=$1`, nodeID).Scan(&count); err != nil {
 		s.writeDatabaseError(w, "find workflow step", err)
 		return
 	}
 	if count <= 1 {
 		writeError(w, http.StatusConflict, "a task must keep at least one workflow step")
+		return
+	}
+	var position int
+	var stepName string
+	if err = tx.QueryRow(r.Context(), `SELECT position,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2`, stepID, nodeID).Scan(&position, &stepName); err != nil {
+		s.writeDatabaseError(w, "find workflow step", err)
 		return
 	}
 	if tag, queryErr := tx.Exec(r.Context(), `DELETE FROM workflow_steps WHERE id=$1 AND work_node_id=$2`, stepID, nodeID); queryErr != nil || tag.RowsAffected() != 1 {
@@ -241,7 +248,7 @@ func (s *server) deleteWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actorID, _ := s.currentActorID(r.Context(), workspaceID)
-	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID})
+	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": stepName, "position": position})
 	if _, err = tx.Exec(r.Context(), `INSERT INTO change_events(workspace_id,root_id,workspace_revision,correlation_id,entity_type,entity_id,event_type,after_state,actor_id) VALUES($1,$2,$3,uuidv7(),'workflow_step',$4,'workflow_step.deleted',$5,$6)`, workspaceID, rootID, revision, stepID, json.RawMessage(after), actorID); err != nil {
 		s.internalError(w, "record workflow deletion", err)
 		return

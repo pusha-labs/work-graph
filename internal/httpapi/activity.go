@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -197,8 +198,31 @@ func describeActivity(eventType string, raw json.RawMessage, fallback string) st
 		}
 	case "workflow_step.updated":
 		name, previousName := text(value, "name"), text(value, "previousName")
+		changes := []string{}
 		if name != "" && previousName != "" && name != previousName {
-			return previousName + " → " + name
+			changes = append(changes, "Name: "+previousName+" → "+name)
+		}
+		for _, field := range []struct{ label, before, after string }{
+			{"Capability", text(value, "previousCapability"), text(value, "capability")},
+			{"Knowledge", text(value, "previousKnowledge"), text(value, "knowledge")},
+			{"Distribution", text(value, "previousDistributionMode"), text(value, "distributionMode")},
+		} {
+			if field.before != field.after {
+				before, after := field.before, field.after
+				if before == "" {
+					before = "none"
+				}
+				if after == "" {
+					after = "none"
+				}
+				changes = append(changes, field.label+": "+before+" → "+after)
+			}
+		}
+		if changed, _ := value["configurationChanged"].(bool); changed {
+			changes = append(changes, "Module settings updated")
+		}
+		if len(changes) > 0 {
+			return strings.Join(changes, " · ")
 		}
 		if name != "" {
 			return name + " · route definition updated"

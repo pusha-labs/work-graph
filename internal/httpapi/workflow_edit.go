@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -48,9 +49,13 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "workflow can only be edited before work starts")
 		return
 	}
-	var stepType, previousName string
+	var stepType, previousName, previousCapability, previousKnowledge, previousDistribution string
 	var moduleID, moduleVersion *string
-	if err = tx.QueryRow(r.Context(), `SELECT step_type,module_id,module_version,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2 FOR UPDATE`, stepID, nodeID).Scan(&stepType, &moduleID, &moduleVersion, &previousName); err != nil {
+	var previousConfiguration json.RawMessage
+	if err = tx.QueryRow(r.Context(), `SELECT s.step_type,s.module_id,s.module_version,s.name,s.distribution_mode,s.configuration,
+		COALESCE((SELECT c.name FROM workflow_step_capabilities r JOIN capabilities c ON c.id=r.capability_id WHERE r.workflow_step_id=s.id ORDER BY c.name LIMIT 1),''),
+		COALESCE((SELECT k.name FROM workflow_step_knowledge r JOIN knowledge_subjects k ON k.id=r.subject_id WHERE r.workflow_step_id=s.id ORDER BY k.name LIMIT 1),'')
+		FROM workflow_steps s WHERE s.id=$1 AND s.work_node_id=$2 FOR UPDATE`, stepID, nodeID).Scan(&stepType, &moduleID, &moduleVersion, &previousName, &previousDistribution, &previousConfiguration, &previousCapability, &previousKnowledge); err != nil {
 		s.writeDatabaseError(w, "find workflow step", err)
 		return
 	}
@@ -113,12 +118,26 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	capabilityName, knowledgeName := "", ""
+	if input.CapabilityID != "" {
+		_ = tx.QueryRow(r.Context(), `SELECT name FROM capabilities WHERE workspace_id=$1 AND id=$2`, workspaceID, input.CapabilityID).Scan(&capabilityName)
+	}
+	if input.SubjectID != "" {
+		_ = tx.QueryRow(r.Context(), `SELECT name FROM knowledge_subjects WHERE workspace_id=$1 AND id=$2`, workspaceID, input.SubjectID).Scan(&knowledgeName)
+	}
+	distribution := input.DistributionMode
+	if distribution == "" {
+		distribution = previousDistribution
+	}
 	actorID, err := s.currentActorID(r.Context(), workspaceID)
 	if err != nil {
 		s.writeDatabaseError(w, "find workflow author", err)
 		return
 	}
-	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name, "previousName": previousName})
+	var previousConfigurationValue, configurationValue any
+	_ = json.Unmarshal(previousConfiguration, &previousConfigurationValue)
+	_ = json.Unmarshal(input.Configuration, &configurationValue)
+	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name, "previousName": previousName, "capability": capabilityName, "previousCapability": previousCapability, "knowledge": knowledgeName, "previousKnowledge": previousKnowledge, "distributionMode": distribution, "previousDistributionMode": previousDistribution, "configurationChanged": !reflect.DeepEqual(previousConfigurationValue, configurationValue)})
 	if _, err = tx.Exec(r.Context(), `WITH event AS (INSERT INTO change_events(workspace_id,root_id,workspace_revision,correlation_id,entity_type,entity_id,event_type,after_state,actor_id) VALUES($1,$2,$3,uuidv7(),'workflow_step',$4,'workflow_step.updated',$5,$6) RETURNING correlation_id) INSERT INTO outbox_events(workspace_id,event_type,aggregate_type,aggregate_id,payload,workspace_revision,actor_id,correlation_id) SELECT $1,'workflow_step.updated','work_node',$7,$5,$3,$6,correlation_id FROM event`, workspaceID, rootID, revision, stepID, json.RawMessage(after), actorID, nodeID); err != nil {
 		s.internalError(w, "record workflow update", err)
 		return

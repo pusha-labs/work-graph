@@ -833,10 +833,14 @@ function SnapshotDetails({ node, revision, change, activity, nodes }: { node: Wo
 }
 
 function ActivityPanel({ items, activeRevision, busy, historyMode, onPreview }: { items: ActivityItem[]; activeRevision: number | null; busy: boolean; historyMode: boolean; onPreview: (revision: number, entityId: string) => void }) {
+  const [filter,setFilter]=useState<'all'|'tree'|'circle'|'workspace'>('all');
+  const category=(item:ActivityItem):'tree'|'circle'|'workspace'=>item.eventType.startsWith('node.')?'tree':item.eventType.startsWith('workflow')||item.eventType.startsWith('requirement.')||item.eventType.startsWith('knowledge_requirement.')?'circle':'workspace';
+  const visibleItems=filter==='all'?items:items.filter((item)=>category(item)===filter);
+  const count=(value:'tree'|'circle'|'workspace')=>items.filter((item)=>category(item)===value).length;
   return <details className={`history-panel ${historyMode?'history-mode':''}`} open={historyMode||activeRevision!==null}>
     <summary><span>{historyMode?'Revision timeline':'Activity & history'}</span><small>{items.length} events · {historyMode?'select a moment':'browse revisions'}</small></summary>
-    <div className="history-content">{items.length === 0 ? <p className="muted">Activity will appear here.</p> : <ol className="timeline">
-      {items.map((item) => {
+    <div className="history-content">{historyMode&&items.length>0&&<nav className="history-filters" aria-label="History event filters">{([['all','All',items.length],['tree','Tree',count('tree')],['circle','Task circle',count('circle')],['workspace','Workspace',count('workspace')]] as const).map(([value,label,total])=><button key={value} className={filter===value?'active':''} onClick={()=>setFilter(value)}>{label}<span>{total}</span></button>)}</nav>}{items.length === 0 ? <p className="muted">Activity will appear here.</p> : visibleItems.length===0?<p className="history-empty">No {filter} events in the recent history.</p>:<ol className="timeline">
+      {visibleItems.map((item) => {
         return <li key={item.id}>
           <button className={activeRevision === item.workspaceRevision ? 'active' : ''} disabled={busy || !item.canPreview} onClick={() => item.canPreview && item.workspaceRevision && item.nodeId && onPreview(item.workspaceRevision, item.nodeId)}>
             <span className="revision">{item.workspaceRevision ? `r${item.workspaceRevision}` : '•'}</span>

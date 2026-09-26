@@ -23,7 +23,7 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
-		writeError(w, http.StatusBadRequest, "step name is required")
+		writeError(w, http.StatusBadRequest, "stage name is required")
 		return
 	}
 	if input.Configuration == nil {
@@ -244,7 +244,7 @@ func (s *server) deleteWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		if queryErr != nil {
 			s.internalError(w, "delete workflow step", queryErr)
 		} else {
-			writeError(w, http.StatusNotFound, "workflow step not found")
+			writeError(w, http.StatusNotFound, "route stage not found")
 		}
 		return
 	}

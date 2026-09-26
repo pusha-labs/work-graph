@@ -179,7 +179,7 @@ func (s *server) putMyWorkflowStepBid(w http.ResponseWriter, r *http.Request) {
 		AND NOT EXISTS(SELECT 1 FROM workflow_step_knowledge req WHERE req.workflow_step_id=s.id AND NOT EXISTS(SELECT 1 FROM actor_knowledge ak WHERE ak.actor_id=$4 AND ak.subject_id=req.subject_id))
 		FROM workflow_steps s JOIN work_nodes n ON n.id=s.work_node_id JOIN workspaces w ON w.id=n.workspace_id WHERE n.workspace_id=$1 AND n.id=$2 AND s.id=$3 AND n.removed_revision IS NULL FOR UPDATE OF s`, workspaceID, nodeID, stepID, actorID).Scan(&rootID, &stepType, &stepStatus, &distributionMode, &claimed, &eligible)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "workflow step not found")
+		writeError(w, http.StatusNotFound, "route stage not found")
 		return
 	}
 	if err != nil {
@@ -187,11 +187,11 @@ func (s *server) putMyWorkflowStepBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if stepType != "human" || stepStatus != "ready" || claimed || distributionMode != "exchange" {
-		writeError(w, http.StatusConflict, "only an unclaimed ready human step accepts bids")
+		writeError(w, http.StatusConflict, "only an unclaimed ready human stage accepts bids")
 		return
 	}
 	if !eligible {
-		writeError(w, http.StatusForbidden, "your capabilities do not satisfy every step requirement")
+		writeError(w, http.StatusForbidden, "your capabilities do not satisfy every stage requirement")
 		return
 	}
 	var before json.RawMessage
@@ -290,7 +290,7 @@ func (s *server) selectWorkflowStepBid(w http.ResponseWriter, r *http.Request) {
 	var requester bool
 	err = tx.QueryRow(r.Context(), `SELECT n.root_id,CASE s.distribution_mode WHEN 'inherit' THEN w.work_distribution_mode ELSE s.distribution_mode END,EXISTS(SELECT 1 FROM work_node_participants p WHERE p.work_node_id=n.id AND p.actor_id=$4 AND p.participant_role='requester') FROM workflow_steps s JOIN work_nodes n ON n.id=s.work_node_id JOIN workspaces w ON w.id=n.workspace_id WHERE n.workspace_id=$1 AND n.id=$2 AND s.id=$3 AND s.step_type='human' AND s.step_status='ready' AND s.claimed_by IS NULL FOR UPDATE OF s`, workspaceID, nodeID, stepID, actorID).Scan(&rootID, &effectiveMode, &requester)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeError(w, http.StatusConflict, "only a ready unassigned human step can close bidding")
+		writeError(w, http.StatusConflict, "only a ready unassigned human stage can close bidding")
 		return
 	}
 	if err != nil {
@@ -302,7 +302,7 @@ func (s *server) selectWorkflowStepBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if effectiveMode != "exchange" {
-		writeError(w, http.StatusConflict, "this step does not use exchange distribution")
+		writeError(w, http.StatusConflict, "this stage does not use exchange distribution")
 		return
 	}
 	var bidID, winnerID string

@@ -86,7 +86,7 @@ func (s *server) updateModuleInstallation(w http.ResponseWriter, r *http.Request
 			return
 		}
 		if referenced {
-			writeError(w, http.StatusConflict, "module is referenced by unfinished workflow steps")
+			writeError(w, http.StatusConflict, "module is referenced by unfinished route stages")
 			return
 		}
 	}

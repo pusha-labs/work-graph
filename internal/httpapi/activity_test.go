@@ -12,13 +12,13 @@ func TestDescribeActivity(t *testing.T) {
 		state     string
 		want      string
 	}{
-		{"step added", "workflow_step.added", `{"workflowStep":{"name":"Design the kitchen","position":2,"stepType":"human"}}`, "Design the kitchen · step 2 · human"},
+		{"stage added", "workflow_step.added", `{"workflowStep":{"name":"Design the kitchen","position":2,"stepType":"human"}}`, "Design the kitchen · stage 2 · human"},
 		{"step moved", "workflow_step.moved", `{"direction":"earlier"}`, "Moved earlier in the route"},
-		{"step moved with positions", "workflow_step.moved", `{"name":"Design the kitchen","fromPosition":3,"toPosition":2}`, "Design the kitchen · step 3 → 2"},
+		{"stage moved with positions", "workflow_step.moved", `{"name":"Design the kitchen","fromPosition":3,"toPosition":2}`, "Design the kitchen · stage 3 → 2"},
 		{"step renamed", "workflow_step.updated", `{"previousName":"Draft drawings","name":"Review drawings"}`, "Name: Draft drawings → Review drawings"},
 		{"step requirements changed", "workflow_step.updated", `{"previousName":"Implement","name":"Implement","previousCapability":"Python","capability":"ClickHouse","previousKnowledge":"Product A","knowledge":"Product B","previousDistributionMode":"simple","distributionMode":"exchange"}`, "Capability: Python → ClickHouse · Knowledge: Product A → Product B · Distribution: simple → exchange"},
 		{"module settings changed", "workflow_step.updated", `{"name":"Call API","previousName":"Call API","configurationChanged":true}`, "Module settings updated"},
-		{"step deleted", "workflow_step.deleted", `{"name":"Obsolete review","position":4}`, "Obsolete review · removed step 4"},
+		{"stage deleted", "workflow_step.deleted", `{"name":"Obsolete review","position":4}`, "Obsolete review · removed stage 4"},
 		{"bid submitted", "workflow_step_bid.submitted", `{"actor":{"displayName":"Demo Designer"},"promisedDurationMinutes":180}`, "Demo Designer · 3 hours"},
 		{"bid selected", "workflow_step_bid.selected", `{"promisedDurationMinutes":2880}`, "Shortest estimate selected · 2 days"},
 		{"returned", "workflow.returned", `{"workflowStep":{"name":"Review drawings"},"reason":"Missing measurements"}`, "Review drawings · Missing measurements"},

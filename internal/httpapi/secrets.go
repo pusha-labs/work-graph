@@ -140,7 +140,7 @@ func (s *server) disableWorkspaceSecret(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if referenced {
-		writeError(w, http.StatusConflict, "secret is referenced by unfinished workflow steps")
+		writeError(w, http.StatusConflict, "secret is referenced by unfinished route stages")
 		return
 	}
 	result, err := s.db.Exec(r.Context(), `UPDATE workspace_secrets SET enabled=false,updated_at=now() WHERE workspace_id=$1 AND id=$2`, r.PathValue("workspaceID"), r.PathValue("secretID"))

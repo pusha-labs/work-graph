@@ -146,9 +146,9 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, diagnostic{
 			ID: "agreed-duration-elapsed:" + executionID, Kind: "agreed_duration_elapsed", Severity: "warning",
-			Title: "Agreed duration has elapsed", Explanation: "This step is still active beyond its agreed duration. The signal describes schedule risk and does not judge the performer.",
+			Title: "Agreed duration has elapsed", Explanation: "This stage is still active beyond its agreed duration. The signal describes schedule risk and does not judge the performer.",
 			NodeID: nodeID, NodeTitle: nodeTitle,
-			Evidence: []string{fmt.Sprintf("Active step: %s", stepName), fmt.Sprintf("Performer: %s", performer), fmt.Sprintf("Agreed: %s · elapsed: %s", formatDiagnosticDuration(agreedMinutes), formatDiagnosticDuration(elapsedMinutes))}, RelatedNodeIDs: []string{},
+			Evidence: []string{fmt.Sprintf("Active stage: %s", stepName), fmt.Sprintf("Performer: %s", performer), fmt.Sprintf("Agreed: %s · elapsed: %s", formatDiagnosticDuration(agreedMinutes), formatDiagnosticDuration(elapsedMinutes))}, RelatedNodeIDs: []string{},
 		})
 	}
 	if err := overdueRows.Err(); err != nil {
@@ -265,7 +265,7 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 			s.internalError(w, "read performer diagnostic", err)
 			return
 		}
-		evidence := []string{fmt.Sprintf("Ready step: %s", stepName)}
+		evidence := []string{fmt.Sprintf("Ready stage: %s", stepName)}
 		if len(capabilities) > 0 {
 			evidence = append(evidence, "Required roles or skills: "+joinDiagnosticNames(capabilities))
 		}
@@ -274,7 +274,7 @@ func (s *server) listDiagnostics(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, diagnostic{
 			ID: "no-eligible-performer:" + nodeID, Kind: "no_eligible_performer", Severity: "warning",
-			Title: "No eligible performer", Explanation: "No actor currently satisfies every requirement of the next human step.",
+			Title: "No eligible performer", Explanation: "No actor currently satisfies every requirement of the next human stage.",
 			NodeID: nodeID, NodeTitle: nodeTitle, Evidence: evidence, RelatedNodeIDs: []string{},
 		})
 	}

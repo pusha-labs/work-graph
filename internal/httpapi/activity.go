@@ -94,13 +94,13 @@ func (s *server) listActivity(w http.ResponseWriter, r *http.Request) {
 		case "knowledge_requirement.added":
 			item.Summary = "Entity knowledge requirement added"
 		case "workflow_step.added":
-			item.Summary = "Workflow step added"
+			item.Summary = "Route stage added"
 		case "workflow_step.updated":
-			item.Summary = "Workflow step updated"
+			item.Summary = "Route stage updated"
 		case "workflow_step.moved":
-			item.Summary = "Workflow step moved"
+			item.Summary = "Route stage moved"
 		case "workflow_step.deleted":
-			item.Summary = "Workflow step deleted"
+			item.Summary = "Route stage deleted"
 		case "workflow_step_bid.submitted":
 			item.Summary = "Performer bid submitted"
 		case "workflow_step_bid.updated":
@@ -227,7 +227,7 @@ func describeActivity(eventType string, raw json.RawMessage, fallback string) st
 	case "workflow_step.added":
 		name, kind, position := text(step, "name"), text(step, "stepType"), number(step, "position")
 		if name != "" && position > 0 {
-			return fmt.Sprintf("%s · step %d · %s", name, position, kind)
+			return fmt.Sprintf("%s · stage %d · %s", name, position, kind)
 		}
 	case "workflow_step.updated":
 		name, previousName := text(value, "name"), text(value, "previousName")
@@ -263,16 +263,16 @@ func describeActivity(eventType string, raw json.RawMessage, fallback string) st
 	case "workflow_step.moved":
 		name, from, to := text(value, "name"), number(value, "fromPosition"), number(value, "toPosition")
 		if name != "" && from > 0 && to > 0 {
-			return fmt.Sprintf("%s · step %d → %d", name, from, to)
+			return fmt.Sprintf("%s · stage %d → %d", name, from, to)
 		}
 		if direction := text(value, "direction"); direction != "" {
 			return "Moved " + direction + " in the route"
 		}
 	case "workflow_step.deleted":
 		if name, position := text(value, "name"), number(value, "position"); name != "" && position > 0 {
-			return fmt.Sprintf("%s · removed step %d", name, position)
+			return fmt.Sprintf("%s · removed stage %d", name, position)
 		}
-		return "Route step removed"
+		return "Route stage removed"
 	case "workflow_step_bid.submitted", "workflow_step_bid.updated", "workflow_step_bid.withdrawn":
 		name, minutes := text(actor, "displayName"), number(value, "promisedDurationMinutes")
 		if minutes > 0 {

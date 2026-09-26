@@ -432,7 +432,7 @@ func (s *server) addWorkflowStep(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Name = strings.TrimSpace(input.Name)
 	if input.Name == "" {
-		writeError(w, http.StatusBadRequest, "step name is required")
+		writeError(w, http.StatusBadRequest, "stage name is required")
 		return
 	}
 	if input.StepType == "" {
@@ -495,7 +495,7 @@ func (s *server) addWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if lifecycle != "planned" {
-		writeError(w, http.StatusConflict, "workflow steps can only be added before work starts")
+		writeError(w, http.StatusConflict, "route stages can only be added before work starts")
 		return
 	}
 	var step workflowStep
@@ -822,7 +822,7 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 		}
 		input.Reason = strings.TrimSpace(input.Reason)
 		if input.StepID == "" || input.Reason == "" {
-			writeError(w, http.StatusBadRequest, "step and return reason are required")
+			writeError(w, http.StatusBadRequest, "stage and return reason are required")
 			return
 		}
 		var allowed bool
@@ -839,7 +839,7 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 		var returnedName string
 		err = tx.QueryRow(r.Context(), `SELECT position,name FROM workflow_steps WHERE id=$1 AND work_node_id=$2 AND step_status='completed'`, input.StepID, nodeID).Scan(&returnedPosition, &returnedName)
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusConflict, "only a completed step can be returned")
+			writeError(w, http.StatusConflict, "only a completed stage can be returned")
 			return
 		}
 		if err != nil {
@@ -902,7 +902,7 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 		var failedStepID string
 		err = tx.QueryRow(r.Context(), `SELECT id FROM workflow_steps WHERE work_node_id=$1 AND step_type='api' AND step_status='failed' ORDER BY position LIMIT 1 FOR UPDATE`, nodeID).Scan(&failedStepID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusConflict, "no failed HTTP step is available to retry")
+			writeError(w, http.StatusConflict, "no failed HTTP stage is available to retry")
 			return
 		}
 		if err != nil {
@@ -922,7 +922,7 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !allowed || before.LifecycleStatus != "active" {
-			writeError(w, http.StatusConflict, "only the requester can cancel an active automated step")
+			writeError(w, http.StatusConflict, "only the requester can cancel an active automated stage")
 			return
 		}
 		var stepID, executionID string

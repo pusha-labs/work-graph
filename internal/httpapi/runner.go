@@ -192,6 +192,78 @@ func (s *server) completeHTTPExecution(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": input.Status})
 }
 
+func (s *server) leaseBashExecution(w http.ResponseWriter, r *http.Request) {
+	if !runnerAuthorized(r) {
+		writeError(w, http.StatusUnauthorized, "runner authentication required")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		s.internalError(w, "begin Bash execution lease", err)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var stepID, nodeID, workspaceID, name, moduleID, moduleVersion string
+	var configuration json.RawMessage
+	var before workNode
+	err = tx.QueryRow(r.Context(), `SELECT s.id,n.id,n.workspace_id,s.name,s.module_id,s.module_version,s.configuration FROM workflow_steps s JOIN work_nodes n ON n.id=s.work_node_id JOIN workspace_module_installations i ON i.workspace_id=n.workspace_id AND i.module_id=s.module_id AND i.module_version=s.module_version AND i.enabled AND i.publisher_trusted WHERE s.step_status='ready' AND s.step_type='script' AND s.module_id='builtin.bash' AND n.lifecycle_status='planned' ORDER BY n.created_at,s.position FOR UPDATE OF s,n SKIP LOCKED LIMIT 1`).Scan(&stepID, &nodeID, &workspaceID, &name, &moduleID, &moduleVersion, &configuration)
+	if err == pgx.ErrNoRows {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		s.internalError(w, "lease Bash execution", err)
+		return
+	}
+	if err = scanNode(tx.QueryRow(r.Context(), nodeByIDSQL, workspaceID, nodeID), &before); err != nil {
+		s.internalError(w, "read leased Bash node", err)
+		return
+	}
+	var resolvedConfiguration map[string]any
+	if err := json.Unmarshal(configuration, &resolvedConfiguration); err != nil {
+		s.internalError(w, "read Bash configuration", err)
+		return
+	}
+	if message := s.validateModulePolicy(r, workspaceID, moduleID, moduleVersion, resolvedConfiguration); message != "" {
+		writeError(w, http.StatusForbidden, message)
+		return
+	}
+	var actorID string
+	if err = tx.QueryRow(r.Context(), `INSERT INTO actors(workspace_id,display_name,actor_type) VALUES($1,'Bash runner','automation') ON CONFLICT(workspace_id,display_name) DO UPDATE SET updated_at=now() RETURNING id`, workspaceID).Scan(&actorID); err != nil {
+		s.internalError(w, "ensure Bash runner actor", err)
+		return
+	}
+	var executionID string
+	err = tx.QueryRow(r.Context(), `INSERT INTO workflow_step_executions(workflow_step_id,attempt_number,execution_status,started_by,definition_snapshot) SELECT s.id,COALESCE((SELECT MAX(attempt_number) FROM workflow_step_executions WHERE workflow_step_id=s.id),0)+1,'running',$2,jsonb_build_object('name',s.name,'stepType',s.step_type,'moduleId',s.module_id,'moduleVersion',s.module_version,'configuration',s.configuration) FROM workflow_steps s WHERE s.id=$1 RETURNING id`, stepID, actorID).Scan(&executionID)
+	if err != nil {
+		s.internalError(w, "create Bash execution", err)
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE workflow_steps SET step_status='active',claimed_by=$2,started_at=now() WHERE id=$1`, stepID, actorID); err != nil {
+		s.internalError(w, "activate Bash stage", err)
+		return
+	}
+	revision, err := nextRevision(r.Context(), tx, workspaceID)
+	if err != nil {
+		s.internalError(w, "advance Bash execution revision", err)
+		return
+	}
+	var updated workNode
+	if err = scanNode(tx.QueryRow(r.Context(), `UPDATE work_nodes SET lifecycle_status='active',updated_revision=$3,updated_at=now() WHERE workspace_id=$1 AND id=$2 RETURNING id,workspace_id,root_id,parent_id,title,desired_outcome,lifecycle_status,created_revision,updated_revision,created_at,updated_at`, workspaceID, nodeID, revision), &updated); err != nil {
+		s.internalError(w, "activate Bash execution node", err)
+		return
+	}
+	if err = recordNodeChange(r.Context(), tx, updated, "node.updated", revision, before, actorID); err != nil {
+		s.internalError(w, "record Bash execution start", err)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		s.internalError(w, "commit Bash execution lease", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"executionId": executionID, "stepId": stepID, "nodeId": nodeID, "name": name, "moduleId": moduleID, "moduleVersion": moduleVersion, "configuration": configuration})
+}
+
 func (s *server) getHTTPExecutionStatus(w http.ResponseWriter, r *http.Request) {
 	if !runnerAuthorized(r) {
 		writeError(w, http.StatusUnauthorized, "runner authentication required")

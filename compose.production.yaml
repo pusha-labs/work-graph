@@ -31,6 +31,7 @@ services:
       WORK_GRAPH_SMTP_ADDRESS: ${WORK_GRAPH_SMTP_ADDRESS:-}
       WORK_GRAPH_SMTP_USERNAME: ${WORK_GRAPH_SMTP_USERNAME:-}
       WORK_GRAPH_SMTP_PASSWORD: ${WORK_GRAPH_SMTP_PASSWORD:-}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +40,32 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    networks:
+      - default
+      - bash-runner-control
+
+  bash-runner:
+    profiles: ["bash-automation"]
+    build: .
+    restart: unless-stopped
+    entrypoint: ["work-graph-bash-runner"]
+    environment:
+      API_URL: http://api:8080
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.50
+    networks:
+      - bash-runner-control
+    depends_on:
+      api:
+        condition: service_healthy
 
   web:
     build: ./apps/web
@@ -48,3 +75,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+networks:
+  bash-runner-control:
+    internal: true

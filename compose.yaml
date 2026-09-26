@@ -24,6 +24,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default
+      - bash-runner-control
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/v1/ready"]
       interval: 5s
@@ -38,6 +41,28 @@ services:
       API_URL: http://api:8080
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       HTTP_RUNNER_ALLOWED_HOSTS: ${HTTP_RUNNER_ALLOWED_HOSTS:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  bash-runner:
+    profiles: ["bash-automation"]
+    build: .
+    entrypoint: ["work-graph-bash-runner"]
+    environment:
+      API_URL: http://api:8080
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    mem_limit: 64m
+    cpus: 0.50
+    networks:
+      - bash-runner-control
     depends_on:
       api:
         condition: service_healthy
@@ -91,3 +116,7 @@ services:
 volumes:
   postgres-data:
   gateway-postgres-data:
+
+networks:
+  bash-runner-control:
+    internal: true

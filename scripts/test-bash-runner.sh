@@ -61,4 +61,45 @@ if [[ "$status" != "succeeded" ]] || ! jq -e '.workflowSteps[0].executions[0].re
   exit 1
 fi
 
+cancel_node="$(curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' \
+  -d "$(jq -cn --arg parentId "$root_id" '{parentId:$parentId,title:"Cancel script",desiredOutcome:"The process stops immediately"}')" \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes")"
+cancel_node_id="$(jq -r '.id' <<<"$cancel_node")"
+curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' \
+  -d '{"name":"Long process","stepType":"script","moduleId":"builtin.bash","moduleVersion":"0.1.0","configuration":{"script":"sleep 30","timeoutSeconds":60}}' \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes/$cancel_node_id/workflow-steps" >/dev/null
+for _ in $(seq 1 20); do
+  cancel_circle="$(curl -fsS -b "$cookie_jar" "$base_url/api/v1/workspaces/$workspace_id/nodes/$cancel_node_id/circle")"
+  [[ "$(jq -r '.workflowSteps[0].executions[0].executionStatus // empty' <<<"$cancel_circle")" == "running" ]] && break
+  sleep 0.25
+done
+curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' -d '{}' \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes/$cancel_node_id/actions/cancel" >/dev/null
+
+failed_node="$(curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' \
+  -d "$(jq -cn --arg parentId "$root_id" '{parentId:$parentId,title:"Retry script",desiredOutcome:"Every failed attempt is preserved"}')" \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes")"
+failed_node_id="$(jq -r '.id' <<<"$failed_node")"
+curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' \
+  -d '{"name":"Fail predictably","stepType":"script","moduleId":"builtin.bash","moduleVersion":"0.1.0","configuration":{"script":"printf failure >&2; exit 9","timeoutSeconds":5}}' \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes/$failed_node_id/workflow-steps" >/dev/null
+for _ in $(seq 1 20); do
+  failed_circle="$(curl -fsS -b "$cookie_jar" "$base_url/api/v1/workspaces/$workspace_id/nodes/$failed_node_id/circle")"
+  [[ "$(jq -r '.workflowSteps[0].executions | length' <<<"$failed_circle")" == "1" && "$(jq -r '.workflowSteps[0].executions[0].executionStatus' <<<"$failed_circle")" == "failed" ]] && break
+  sleep 0.25
+done
+curl -fsS -b "$cookie_jar" -H 'Content-Type: application/json' -d '{}' \
+  "$base_url/api/v1/workspaces/$workspace_id/nodes/$failed_node_id/actions/retry" >/dev/null
+for _ in $(seq 1 20); do
+  failed_circle="$(curl -fsS -b "$cookie_jar" "$base_url/api/v1/workspaces/$workspace_id/nodes/$failed_node_id/circle")"
+  [[ "$(jq -r '.workflowSteps[0].executions | length' <<<"$failed_circle")" == "2" && "$(jq -r '.workflowSteps[0].executions[1].executionStatus' <<<"$failed_circle")" == "failed" ]] && break
+  sleep 0.25
+done
+cancel_circle="$(curl -fsS -b "$cookie_jar" "$base_url/api/v1/workspaces/$workspace_id/nodes/$cancel_node_id/circle")"
+if [[ "$(jq -r '.workflowSteps[0].executions[0].executionStatus' <<<"$cancel_circle")" != "cancelled" ]] || ! jq -e '.workflowSteps[0].executions | length==2 and .[0].attemptNumber==2 and .[1].attemptNumber==1 and .[0].result.exitCode==9' <<<"$failed_circle" >/dev/null; then
+  echo "Bash cancellation or retry history verification failed." >&2
+  docker compose logs bash-runner api >&2
+  exit 1
+fi
+
 echo "Bash runner verification passed in an isolated deployment."

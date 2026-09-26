@@ -57,7 +57,19 @@ func Run(ctx context.Context, logger *slog.Logger, apiURL, token string) error {
 			continue
 		}
 		response.Body.Close()
-		status, result, message := execute(ctx, job.Configuration.Script, job.Configuration.TimeoutSeconds)
+		jobCtx, cancelJob := context.WithCancel(ctx)
+		cancelled := make(chan struct{})
+		monitorDone := make(chan struct{})
+		go monitorCancellation(jobCtx, client, apiURL, token, job.ExecutionID, cancelJob, cancelled, monitorDone)
+		status, result, message := execute(jobCtx, job.Configuration.Script, job.Configuration.TimeoutSeconds)
+		cancelJob()
+		<-monitorDone
+		select {
+		case <-cancelled:
+			logger.Info("execution cancelled by requester", "executionId", job.ExecutionID)
+			continue
+		default:
+		}
 		payload, _ := json.Marshal(map[string]any{"executionId": job.ExecutionID, "status": status, "result": result, "error": message})
 		complete, _ := http.NewRequestWithContext(ctx, http.MethodPost, apiURL+"/api/v1/runner/bash/complete", bytes.NewReader(payload))
 		complete.Header.Set("Authorization", "Bearer "+token)
@@ -71,6 +83,35 @@ func Run(ctx context.Context, logger *slog.Logger, apiURL, token string) error {
 		done.Body.Close()
 		if done.StatusCode != http.StatusOK {
 			logger.Error("completion rejected", "status", done.StatusCode)
+		}
+	}
+}
+
+func monitorCancellation(ctx context.Context, client *http.Client, apiURL, token, executionID string, cancel context.CancelFunc, cancelled chan<- struct{}, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, apiURL+"/api/v1/runner/bash/executions/"+executionID, nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			response, err := client.Do(request)
+			if err != nil {
+				continue
+			}
+			var state struct {
+				Status string `json:"status"`
+			}
+			decodeErr := json.NewDecoder(response.Body).Decode(&state)
+			response.Body.Close()
+			if response.StatusCode == http.StatusOK && decodeErr == nil && state.Status == "cancelled" {
+				close(cancelled)
+				cancel()
+				return
+			}
 		}
 	}
 }

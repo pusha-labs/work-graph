@@ -138,6 +138,7 @@ func New(logger *slog.Logger, db *pgxpool.Pool) http.Handler {
 	mux.HandleFunc("GET /api/v1/runner/http/executions/{executionID}", s.getHTTPExecutionStatus)
 	mux.HandleFunc("POST /api/v1/runner/http/complete", s.completeHTTPExecution)
 	mux.HandleFunc("POST /api/v1/runner/bash/lease", s.leaseBashExecution)
+	mux.HandleFunc("GET /api/v1/runner/bash/executions/{executionID}", s.getHTTPExecutionStatus)
 	mux.HandleFunc("POST /api/v1/runner/bash/complete", s.completeHTTPExecution)
 	mux.Handle("/api/v1/", s.withAuthentication(protected))
 	return withCORS(withRequestLogging(logger, mux))

@@ -383,6 +383,12 @@ textarea { resize: vertical; line-height: 1.5; }
 .estimate-observation i.early { color:#35654e; background:#e2eee7; }
 .execution-history details summary { color: #53675d; cursor: pointer; font-size: .61rem; font-weight: 750; }
 .execution-history pre { max-height: 12rem; margin: .35rem 0 0; padding: .5rem; overflow: auto; color: #dcebe3; background: #18251f; border-radius: .4rem; font-size: .58rem; white-space: pre-wrap; }
+.shell-result { display:grid; gap:.45rem; }
+.shell-result-meta { display:flex; flex-wrap:wrap; align-items:center; gap:.65rem; margin-top:.45rem; color:#66746c; font-size:.65rem; }
+.shell-result-meta i { color:#8a6334; font-style:normal; }
+.shell-result section { display:grid; gap:.25rem; }
+.shell-result section > strong { color:#647269; font-size:.62rem; text-transform:uppercase; }
+.shell-result section.stderr pre { color:#ffd9d9; background:#392727; }
 .execution-state { padding: .2rem .35rem; border-radius: 999px; background: #e8eeeb; font-size: .56rem; font-weight: 800; text-align: center; text-transform: uppercase; }
 .execution-state.running { color: #245a44; background: #dff1e7; }
 .execution-state.succeeded { color: #35694f; background: #e2f0e8; }

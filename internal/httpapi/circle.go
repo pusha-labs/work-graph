@@ -394,12 +394,12 @@ func (s *server) getWorkCircle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var hasRetryableStep bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workflow_steps WHERE work_node_id=$1 AND step_type='api' AND step_status='failed')`, nodeID).Scan(&hasRetryableStep); err != nil {
+	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workflow_steps WHERE work_node_id=$1 AND step_type IN ('api','script') AND step_status='failed')`, nodeID).Scan(&hasRetryableStep); err != nil {
 		s.internalError(w, "check retryable workflow step", err)
 		return
 	}
 	var hasCancellableStep bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workflow_steps s JOIN workflow_step_executions e ON e.workflow_step_id=s.id WHERE s.work_node_id=$1 AND s.step_type='api' AND s.step_status='active' AND e.execution_status='running')`, nodeID).Scan(&hasCancellableStep); err != nil {
+	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM workflow_steps s JOIN workflow_step_executions e ON e.workflow_step_id=s.id WHERE s.work_node_id=$1 AND s.step_type IN ('api','script') AND s.step_status='active' AND e.execution_status='running')`, nodeID).Scan(&hasCancellableStep); err != nil {
 		s.internalError(w, "check cancellable workflow step", err)
 		return
 	}
@@ -900,17 +900,17 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var failedStepID string
-		err = tx.QueryRow(r.Context(), `SELECT id FROM workflow_steps WHERE work_node_id=$1 AND step_type='api' AND step_status='failed' ORDER BY position LIMIT 1 FOR UPDATE`, nodeID).Scan(&failedStepID)
+		err = tx.QueryRow(r.Context(), `SELECT id FROM workflow_steps WHERE work_node_id=$1 AND step_type IN ('api','script') AND step_status='failed' ORDER BY position LIMIT 1 FOR UPDATE`, nodeID).Scan(&failedStepID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusConflict, "no failed HTTP stage is available to retry")
+			writeError(w, http.StatusConflict, "no failed automated stage is available to retry")
 			return
 		}
 		if err != nil {
-			s.internalError(w, "find failed HTTP step", err)
+			s.internalError(w, "find failed automated stage", err)
 			return
 		}
 		if _, err = tx.Exec(r.Context(), `UPDATE workflow_steps SET step_status='ready',claimed_by=NULL,started_at=NULL,completed_at=NULL WHERE id=$1`, failedStepID); err != nil {
-			s.internalError(w, "prepare HTTP step retry", err)
+			s.internalError(w, "prepare automated stage retry", err)
 			return
 		}
 		nextStatus = "planned"
@@ -926,21 +926,21 @@ func (s *server) performWorkAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var stepID, executionID string
-		err = tx.QueryRow(r.Context(), `SELECT s.id,e.id FROM workflow_steps s JOIN workflow_step_executions e ON e.workflow_step_id=s.id WHERE s.work_node_id=$1 AND s.step_type='api' AND s.step_status='active' AND e.execution_status='running' ORDER BY s.position LIMIT 1 FOR UPDATE OF s,e`, nodeID).Scan(&stepID, &executionID)
+		err = tx.QueryRow(r.Context(), `SELECT s.id,e.id FROM workflow_steps s JOIN workflow_step_executions e ON e.workflow_step_id=s.id WHERE s.work_node_id=$1 AND s.step_type IN ('api','script') AND s.step_status='active' AND e.execution_status='running' ORDER BY s.position LIMIT 1 FOR UPDATE OF s,e`, nodeID).Scan(&stepID, &executionID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			writeError(w, http.StatusConflict, "no active HTTP execution is available to cancel")
+			writeError(w, http.StatusConflict, "no active automated execution is available to cancel")
 			return
 		}
 		if err != nil {
-			s.internalError(w, "find active HTTP execution", err)
+			s.internalError(w, "find active automated execution", err)
 			return
 		}
 		if _, err = tx.Exec(r.Context(), `UPDATE workflow_step_executions SET execution_status='cancelled',finished_at=now(),error_message='Cancelled by requester' WHERE id=$1 AND execution_status='running'`, executionID); err != nil {
-			s.internalError(w, "cancel HTTP execution", err)
+			s.internalError(w, "cancel automated execution", err)
 			return
 		}
 		if _, err = tx.Exec(r.Context(), `UPDATE workflow_steps SET step_status='failed',completed_at=now() WHERE id=$1`, stepID); err != nil {
-			s.internalError(w, "mark cancelled HTTP step", err)
+			s.internalError(w, "mark cancelled automated stage", err)
 			return
 		}
 		nextStatus = "blocked"

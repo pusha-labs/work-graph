@@ -17,6 +17,7 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		SubjectID        string          `json:"subjectId"`
 		Configuration    json.RawMessage `json:"configuration"`
 		DistributionMode string          `json:"distributionMode"`
+		ModuleVersion    string          `json:"moduleVersion"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
@@ -60,8 +61,12 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if stepType != "human" {
+		targetVersion := input.ModuleVersion
+		if targetVersion == "" && moduleVersion != nil {
+			targetVersion = *moduleVersion
+		}
 		var schema json.RawMessage
-		if err = tx.QueryRow(r.Context(), `SELECT configuration_schema FROM workflow_modules WHERE module_id=$1 AND module_version=$2 AND enabled`, moduleID, moduleVersion).Scan(&schema); err != nil {
+		if err = tx.QueryRow(r.Context(), `SELECT configuration_schema FROM workflow_modules WHERE module_id=$1 AND module_version=$2 AND enabled`, moduleID, targetVersion).Scan(&schema); err != nil {
 			s.writeDatabaseError(w, "find workflow module", err)
 			return
 		}
@@ -74,8 +79,8 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, message)
 			return
 		}
-		if moduleID != nil && moduleVersion != nil {
-			if message := s.validateModulePolicy(r, workspaceID, *moduleID, *moduleVersion, configuration); message != "" {
+		if moduleID != nil {
+			if message := s.validateModulePolicy(r, workspaceID, *moduleID, targetVersion, configuration); message != "" {
 				writeError(w, http.StatusForbidden, message)
 				return
 			}
@@ -92,7 +97,14 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 		s.writeDatabaseError(w, "find workspace", err)
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `UPDATE workflow_steps SET name=$3,configuration=$4,distribution_mode=CASE WHEN $5='' THEN distribution_mode ELSE $5 END WHERE id=$1 AND work_node_id=$2`, stepID, nodeID, input.Name, input.Configuration, input.DistributionMode); err != nil {
+	targetModuleVersion := any(nil)
+	if stepType != "human" {
+		targetModuleVersion = input.ModuleVersion
+		if input.ModuleVersion == "" && moduleVersion != nil {
+			targetModuleVersion = *moduleVersion
+		}
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE workflow_steps SET name=$3,configuration=$4,distribution_mode=CASE WHEN $5='' THEN distribution_mode ELSE $5 END,module_version=COALESCE($6,module_version) WHERE id=$1 AND work_node_id=$2`, stepID, nodeID, input.Name, input.Configuration, input.DistributionMode, targetModuleVersion); err != nil {
 		s.internalError(w, "update workflow step", err)
 		return
 	}
@@ -137,7 +149,15 @@ func (s *server) updateWorkflowStep(w http.ResponseWriter, r *http.Request) {
 	var previousConfigurationValue, configurationValue any
 	_ = json.Unmarshal(previousConfiguration, &previousConfigurationValue)
 	_ = json.Unmarshal(input.Configuration, &configurationValue)
-	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name, "previousName": previousName, "capability": capabilityName, "previousCapability": previousCapability, "knowledge": knowledgeName, "previousKnowledge": previousKnowledge, "distributionMode": distribution, "previousDistributionMode": previousDistribution, "configurationChanged": !reflect.DeepEqual(previousConfigurationValue, configurationValue)})
+	newModuleVersion := ""
+	if targetModuleVersion != nil {
+		newModuleVersion = targetModuleVersion.(string)
+	}
+	previousModuleVersion := ""
+	if moduleVersion != nil {
+		previousModuleVersion = *moduleVersion
+	}
+	after, _ := json.Marshal(map[string]any{"nodeId": nodeID, "stepId": stepID, "name": input.Name, "previousName": previousName, "capability": capabilityName, "previousCapability": previousCapability, "knowledge": knowledgeName, "previousKnowledge": previousKnowledge, "distributionMode": distribution, "previousDistributionMode": previousDistribution, "configurationChanged": !reflect.DeepEqual(previousConfigurationValue, configurationValue), "moduleVersion": newModuleVersion, "previousModuleVersion": previousModuleVersion})
 	if _, err = tx.Exec(r.Context(), `WITH event AS (INSERT INTO change_events(workspace_id,root_id,workspace_revision,correlation_id,entity_type,entity_id,event_type,after_state,actor_id) VALUES($1,$2,$3,uuidv7(),'workflow_step',$4,'workflow_step.updated',$5,$6) RETURNING correlation_id) INSERT INTO outbox_events(workspace_id,event_type,aggregate_type,aggregate_id,payload,workspace_revision,actor_id,correlation_id) SELECT $1,'workflow_step.updated','work_node',$7,$5,$3,$6,correlation_id FROM event`, workspaceID, rootID, revision, stepID, json.RawMessage(after), actorID, nodeID); err != nil {
 		s.internalError(w, "record workflow update", err)
 		return

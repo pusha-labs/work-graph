@@ -227,7 +227,7 @@ func (s *server) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "link workspace owner", err)
 		return
 	}
-	if _, err := tx.Exec(r.Context(), `INSERT INTO workspace_module_installations(workspace_id,module_id,module_version,enabled,publisher_trusted) SELECT $1,module_id,module_version,publisher='Work Graph',publisher='Work Graph' FROM workflow_modules`, result.ID); err != nil {
+	if _, err := tx.Exec(r.Context(), `INSERT INTO workspace_module_installations(workspace_id,module_id,module_version,enabled,publisher_trusted) SELECT $1,module_id,module_version,publisher='Work Graph',publisher='Work Graph' FROM (SELECT DISTINCT ON (module_id) module_id,module_version,publisher FROM workflow_modules WHERE enabled ORDER BY module_id,created_at DESC,module_version DESC) latest`, result.ID); err != nil {
 		s.internalError(w, "install workspace modules", err)
 		return
 	}

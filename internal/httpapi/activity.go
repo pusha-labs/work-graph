@@ -251,6 +251,9 @@ func describeActivity(eventType string, raw json.RawMessage, fallback string) st
 				changes = append(changes, field.label+": "+before+" → "+after)
 			}
 		}
+		if before, after := text(value, "previousModuleVersion"), text(value, "moduleVersion"); before != after && after != "" {
+			changes = append(changes, "Module version: "+before+" → "+after)
+		}
 		if changed, _ := value["configurationChanged"].(bool); changed {
 			changes = append(changes, "Module settings updated")
 		}

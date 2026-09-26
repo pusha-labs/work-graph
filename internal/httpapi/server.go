@@ -90,6 +90,7 @@ func New(logger *slog.Logger, db *pgxpool.Pool) http.Handler {
 	protected.HandleFunc("POST /api/v1/workspaces/{workspaceID}/nodes/{nodeID}/workflow-steps/{stepID}/bids/select", s.authorizeWorkspace(s.selectWorkflowStepBid))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/workflow-modules", s.authorizeWorkspace(s.listWorkflowModules))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/module-installations", s.authorizeWorkspaceAdmin(s.listModuleInstallations))
+	protected.HandleFunc("POST /api/v1/workspaces/{workspaceID}/module-installations/{moduleID}/{moduleVersion}", s.authorizeWorkspaceAdmin(s.installModule))
 	protected.HandleFunc("PATCH /api/v1/workspaces/{workspaceID}/module-installations/{moduleID}/{moduleVersion}", s.authorizeWorkspaceAdmin(s.updateModuleInstallation))
 	protected.HandleFunc("GET /api/v1/workspaces/{workspaceID}/secrets", s.authorizeWorkspace(s.listWorkspaceSecrets))
 	protected.HandleFunc("POST /api/v1/workspaces/{workspaceID}/secrets", s.authorizeWorkspaceAdmin(s.createWorkspaceSecret))

@@ -660,10 +660,14 @@ textarea { resize: vertical; line-height: 1.5; }
 .modules-view > header > p { max-width: 34rem; margin: 0; color: #718078; font-size: .8rem; line-height: 1.5; }
 .module-policy-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
 .module-policy-list > article { display: grid; align-content: start; gap: .85rem; padding: 1rem; background: #fff; border: 1px solid #dfe6e1; border-radius: .8rem; }
+.module-policy-list > article.available { border-style: dashed; background: #fbfcfb; }
 .module-policy-list > article > p { margin: 0; color: #68766f; font-size: .78rem; line-height: 1.45; }
 .module-policy-heading { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .65rem; }
 .module-policy-heading > div { display: grid; gap: .2rem; }
 .module-policy-heading small { color: #7a8780; }
+.module-status { padding: .25rem .45rem; color: #6c776f; background: #edf1ee; border-radius: .4rem; font-size: .62rem; font-weight: 750; text-transform: uppercase; }
+.module-install { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding-top: .15rem; }
+.module-install span { color: #748078; font-size: .7rem; }
 .module-kind { padding: .25rem .45rem; color: #315f8b; background: #e4eff9; border-radius: .4rem; font-size: .6rem; font-weight: 800; text-transform: uppercase; }
 .module-kind.script { color: #684f82; background: #eee6f6; }
 .policy-toggle { display: flex; align-items: center; gap: .4rem; color: #526159; font-size: .72rem; font-weight: 700; }
